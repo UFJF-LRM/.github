@@ -1,0 +1,65 @@
+name: Bug
+description: Algo não funciona como deveria.
+labels: ["tipo: fix"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de abrir, confira se já existe uma issue aberta sobre o mesmo problema.
+
+        Depois de criar, adicione **uma label de prioridade** na barra lateral. Use `prioridade: crítica` se o problema afeta a produção ou a segurança.
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: Descrição
+      description: O que está acontecendo.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      description: O caminho exato até o problema.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+
+  - type: textarea
+    id: atual
+    attributes:
+      label: Comportamento atual
+    validations:
+      required: true
+
+  - type: textarea
+    id: ambiente
+    attributes:
+      label: Ambiente
+      description: Onde o problema acontece.
+      value: |
+        - Ambiente (produção, homologação ou local):
+        - Perfil do usuário (GEC, EPE ou CLI):
+        - Navegador ou aparelho, com versão:
+        - Versão ou commit:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidencias
+    attributes:
+      label: Evidências
+      description: Capturas de tela, vídeos, mensagens de erro ou trechos de log. Não inclua senhas, tokens nem dados pessoais.
+    validations:
+      required: false

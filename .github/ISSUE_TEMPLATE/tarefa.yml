@@ -1,0 +1,76 @@
+name: Tarefa
+description: Nova funcionalidade, melhoria, refatoração, documentação ou configuração.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Escreva o título com um verbo no infinitivo (por exemplo, "Criar os endpoints de sessão e token") e descreva a tarefa seguindo o [padrão de issue do Monitora](https://github.com/UFJF-LRM/monitora-docs/blob/main/convencao-de-issue/padrao-de-issue.md).
+
+        Depois de criar, adicione na barra lateral:
+        - **uma label de tipo** (`tipo: feat`, `tipo: fix`, `tipo: docs`...);
+        - **uma label de prioridade** (`prioridade: crítica`, `alta`, `média` ou `baixa`);
+        - a **milestone** da fase do plano de migração, se houver.
+
+        O número desta issue será o número da task nos commits, por exemplo `feat(api-12): ...`.
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      description: A situação atual e o motivo da tarefa.
+      placeholder: Hoje o login responde com redirecionamento, o que não funciona para o app mobile...
+    validations:
+      required: true
+
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: O resultado esperado, em uma ou duas frases.
+      placeholder: A SPA e o app mobile conseguem entrar e sair da API.
+    validations:
+      required: true
+
+  - type: textarea
+    id: o-que-fazer
+    attributes:
+      label: O que fazer
+      description: Os passos da tarefa, como checklist.
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterios-de-aceite
+    attributes:
+      label: Critérios de aceite
+      description: O que precisa ser verdade para a issue ser fechada.
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: fora-do-escopo
+    attributes:
+      label: Fora do escopo
+      description: O que parece fazer parte da tarefa, mas fica para outra issue.
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencias
+    attributes:
+      label: Dependências
+      description: Issues ou decisões que precisam vir antes. Use `#número` ou `UFJF-LRM/repositorio#número`.
+    validations:
+      required: false
+
+  - type: textarea
+    id: referencias
+    attributes:
+      label: Referências
+      description: Links para o plano, os ADRs, o contrato da API ou documentações externas.
+    validations:
+      required: false
