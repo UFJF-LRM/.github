@@ -6,7 +6,12 @@ Título do PR: siga a convenção de commit do repositório. Com o merge por squ
   monitora-mobile: tipo(mobile-##): descrição
   .github:         tipo(github-##): descrição
   monitora-docs:   tipo: descrição
-O ## é o número da issue. Convenção completa: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
+O ## é o número da issue.
+
+Merge: só "Squash and merge", sem editar o título na confirmação.
+
+Convenção de commit: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
+Padrão de PR (branch, corpo, revisão, checks e merge): https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-pr.md
 -->
 
 Closes #
