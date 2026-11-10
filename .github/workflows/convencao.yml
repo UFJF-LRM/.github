@@ -1,0 +1,14 @@
+# Aplica a validação de convenção aos PRs deste próprio repositório.
+name: Convenção do PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  convencao:
+    uses: ./.github/workflows/convencao-pr.yml
+    with:
+      prefixo: github
