@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentação do Monitora
+    url: https://github.com/UFJF-LRM/monitora-docs
+    about: Arquitetura, plano de migração, decisões (ADRs) e convenções de commit e de issue.
