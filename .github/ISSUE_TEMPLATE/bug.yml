@@ -1,6 +1,7 @@
 name: Bug
 description: Algo não funciona como deveria.
 labels: ["tipo: fix"]
+projects: ["UFJF-LRM/1"]
 body:
   - type: markdown
     attributes:

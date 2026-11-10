@@ -1,5 +1,6 @@
 name: Tarefa
 description: Nova funcionalidade, melhoria, refatoração, documentação ou configuração.
+projects: ["UFJF-LRM/1"]
 body:
   - type: markdown
     attributes:
