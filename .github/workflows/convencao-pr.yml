@@ -1,0 +1,95 @@
+# Workflow reutilizável: valida o título e a issue de um pull request.
+#
+# Uso em cada repositório (.github/workflows/convencao-pr.yml):
+#
+#   name: Convenção do PR
+#   on:
+#     pull_request:
+#       types: [opened, edited, synchronize, reopened]
+#   jobs:
+#     convencao:
+#       uses: UFJF-LRM/.github/.github/workflows/convencao-pr.yml@main
+#       with:
+#         prefixo: api   # webui, site, mobile, github; vazio no monitora-docs
+#
+# Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/convencao-de-commit/padrao-de-commit.md
+name: Convenção do PR (reutilizável)
+
+on:
+  workflow_call:
+    inputs:
+      prefixo:
+        description: 'Prefixo da task no título (api, webui, site, mobile, github). Vazio para o formato "tipo: descrição".'
+        type: string
+        required: false
+        default: ""
+      exigir_issue:
+        description: Exige que o corpo do PR cite uma issue (Closes, Fixes, Resolves ou Refs).
+        type: boolean
+        required: false
+        default: true
+
+permissions: {}
+
+jobs:
+  validar:
+    name: Validar título e issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar
+        env:
+          # Valores do evento passam por variáveis de ambiente, nunca interpolados no script.
+          TITULO: ${{ github.event.pull_request.title }}
+          CORPO: ${{ github.event.pull_request.body }}
+          PREFIXO: ${{ inputs.prefixo }}
+          EXIGIR_ISSUE: ${{ inputs.exigir_issue }}
+        run: |
+          set -euo pipefail
+          TIPOS='feat|fix|docs|refactor|test|style|perf|build|ci|chore'
+          erros=0
+
+          falhar() {
+            echo "::error title=$1::$2"
+            printf '### ❌ %s\n\n%s\n\n' "$1" "$2" >> "$GITHUB_STEP_SUMMARY"
+            erros=$((erros + 1))
+          }
+
+          if [ -n "$PREFIXO" ] && ! [[ "$PREFIXO" =~ ^[a-z]+$ ]]; then
+            echo "::error::A entrada 'prefixo' deve ter só letras minúsculas (recebido: '$PREFIXO')."
+            exit 1
+          fi
+
+          if [ -n "$PREFIXO" ]; then
+            padrao="^(${TIPOS})\(${PREFIXO}-([0-9]+)\): .+"
+            formato="tipo(${PREFIXO}-##): descrição"
+            exemplo="feat(${PREFIXO}-12): adiciona o endpoint de publicações"
+          else
+            padrao="^(${TIPOS}): .+"
+            formato="tipo: descrição"
+            exemplo="docs: adiciona o plano de migração"
+          fi
+
+          numero_titulo=""
+          if [[ "$TITULO" =~ $padrao ]]; then
+            [ -n "$PREFIXO" ] && numero_titulo="${BASH_REMATCH[2]}"
+          else
+            falhar "Título fora da convenção" "Recebido: \`$TITULO\`. Formato esperado: \`$formato\`, com tipo entre $TIPOS. Exemplo: \`$exemplo\`."
+          fi
+
+          if [ "$EXIGIR_ISSUE" = "true" ]; then
+            referencias=$(printf '%s' "$CORPO" | grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' || true)
+            if [ -z "$referencias" ]; then
+              falhar "Issue não citada" "O corpo do PR precisa citar a issue, por exemplo \`Closes #12\`."
+            elif [ -n "$numero_titulo" ]; then
+              # A issue do título precisa estar entre as citadas (no próprio repositório).
+              locais=$(printf '%s\n' "$referencias" | grep -vE '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#' | grep -oE '#[0-9]+' | tr -d '#' || true)
+              if ! printf '%s\n' "$locais" | grep -qx "$numero_titulo"; then
+                falhar "Número da task diferente da issue" "O título usa \`${PREFIXO}-${numero_titulo}\`, mas o corpo não cita \`#${numero_titulo}\` deste repositório. Use, por exemplo, \`Closes #${numero_titulo}\`."
+              fi
+            fi
+          fi
+
+          if [ "$erros" -gt 0 ]; then
+            exit 1
+          fi
+          echo "✅ Título e issue seguem a convenção." | tee -a "$GITHUB_STEP_SUMMARY"
