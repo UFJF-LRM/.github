@@ -6,7 +6,7 @@ Título do PR: siga a convenção de commit do repositório. Com o merge por squ
   monitora-mobile: tipo(mobile-##): descrição
   .github:         tipo(github-##): descrição
   monitora-docs:   tipo: descrição
-O ## é o número da issue. Convenção completa: https://github.com/UFJF-LRM/monitora-docs/blob/main/convencao-de-commit/padrao-de-commit.md
+O ## é o número da issue. Convenção completa: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
 -->
 
 Closes #
