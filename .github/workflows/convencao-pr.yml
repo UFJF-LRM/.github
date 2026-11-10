@@ -12,7 +12,7 @@
 #       with:
 #         prefixo: api   # webui, site, mobile, github; vazio no monitora-docs
 #
-# Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/convencao-de-commit/padrao-de-commit.md
+# Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
 name: Convenção do PR (reutilizável)
 
 on:
