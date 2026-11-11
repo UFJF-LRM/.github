@@ -1,0 +1,16 @@
+# Aplica a auditoria dos commits à main deste próprio repositório.
+name: Auditoria dos commits
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  auditoria:
+    uses: ./.github/workflows/auditoria-commits.yml
+    with:
+      prefixo: github
