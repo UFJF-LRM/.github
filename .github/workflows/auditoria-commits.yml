@@ -164,7 +164,7 @@ jobs:
 
           with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
               f.write(corpo)
-          titulo_issue = f"Auditoria: {'force push e ' if forcado and desvios else 'force push' if forcado else ''}{'commits fora da convenção' if desvios else ''} na main ({curto})"
+          titulo_issue = f"Auditoria: {'force push e ' if forcado and desvios else 'force push' if forcado else ''}{'commits fora da convenção' if desvios else ''} na {env('REF', 'main')} ({curto})"
           base = ["issue", "create", "--repo", repositorio, "--title", titulo_issue, "--body-file", f.name]
           criada = gh(*base, "--label", "tipo: chore", "--label", "prioridade: alta")
           if criada.returncode != 0:
