@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Hook commit-msg da organização UFJF-LRM: valida a primeira linha da mensagem
+# de commit contra a convenção do repositório.
+#
+#   Com prefixo: tipo(prefixo-N): descrição    ex.: feat(api-12): adiciona o endpoint
+#   Sem prefixo: tipo: descrição               ex.: docs: adiciona o plano de migração
+#
+# Ativação no repositório (feita uma vez por clone):
+#   git config core.hooksPath .githooks
+#   git config monitora.prefixo api        # webui, site, mobile, github ou "nenhum"
+#
+# Fonte: https://github.com/UFJF-LRM/.github/blob/main/hooks/commit-msg
+# Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
+
+set -u
+
+TIPOS='feat|fix|docs|refactor|test|style|perf|build|ci|chore'
+CONVENCAO='https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md'
+
+arquivo_mensagem="${1:-}"
+if [ -z "$arquivo_mensagem" ] || [ ! -f "$arquivo_mensagem" ]; then
+  echo "commit-msg: arquivo da mensagem não encontrado." >&2
+  exit 1
+fi
+
+# Primeira linha com conteúdo, ignorando comentários do git (#) e linhas em branco.
+titulo=''
+while IFS= read -r linha || [ -n "$linha" ]; do
+  linha="${linha%$'\r'}"
+  case "$linha" in
+    '#'*) continue ;;
+  esac
+  if [ -n "${linha//[[:space:]]/}" ]; then
+    titulo="$linha"
+    break
+  fi
+done < "$arquivo_mensagem"
+
+if [ -z "$titulo" ]; then
+  # Mensagem vazia: o próprio git aborta o commit.
+  exit 0
+fi
+
+# Mensagens geradas pelo git: merge, revert e commits de fixup/squash/amend.
+case "$titulo" in
+  'Merge '* | 'Revert "'* | 'fixup! '* | 'squash! '* | 'amend! '*)
+    exit 0 ;;
+esac
+
+recusar() {
+  {
+    echo ""
+    echo "✖ Commit recusado: $1"
+    echo ""
+    shift
+    for linha in "$@"; do
+      echo "  $linha"
+    done
+    echo ""
+    echo "  Convenção: $CONVENCAO"
+    echo ""
+  } >&2
+  exit 1
+}
+
+prefixo="$(git config --get monitora.prefixo 2>/dev/null || true)"
+
+if [ -z "$prefixo" ]; then
+  recusar "o prefixo do repositório não está configurado." \
+    "Configure uma vez neste clone:" \
+    "  git config monitora.prefixo api      (ou webui, site, mobile, github)" \
+    "  git config monitora.prefixo nenhum   (no monitora-docs, que não usa número)"
+fi
+
+if [ "$prefixo" = "nenhum" ]; then
+  padrao="^(${TIPOS}): .+"
+  formato="tipo: descrição"
+  exemplo="docs: adiciona o plano de migração"
+elif [[ "$prefixo" =~ ^[a-z]+$ ]]; then
+  padrao="^(${TIPOS})\\(${prefixo}-[0-9]+\\): .+"
+  formato="tipo(${prefixo}-N): descrição, em que N é o número da issue"
+  exemplo="feat(${prefixo}-12): adiciona o endpoint de publicações"
+else
+  recusar "o prefixo configurado ('$prefixo') é inválido." \
+    "Use só letras minúsculas (api, webui, site, mobile, github) ou 'nenhum':" \
+    "  git config monitora.prefixo api"
+fi
+
+if [[ ! "$titulo" =~ $padrao ]]; then
+  recusar "a primeira linha não segue a convenção do repositório." \
+    "Recebido:  $titulo" \
+    "Formato:   $formato" \
+    "Tipos:     ${TIPOS//|/, }" \
+    "Exemplo:   $exemplo"
+fi
+
+exit 0
