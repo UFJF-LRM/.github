@@ -20,13 +20,18 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/ISSUE_TEMPLATE/bug.yml`](.github/ISSUE_TEMPLATE/bug.yml) | Formulário **Bug**: Descrição, Passos para reproduzir, Esperado, Atual, Ambiente e Evidências. Aplica a label `tipo: fix` |
 | [`.github/ISSUE_TEMPLATE/config.yml`](.github/ISSUE_TEMPLATE/config.yml) | Desativa as issues em branco e mostra o link para o monitora-docs na tela de nova issue |
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | Template padrão de pull request: issue (`Closes #`), O que muda, Como testar, Checklist e Capturas de tela |
-| [`.github/workflows/convencao-pr.yml`](.github/workflows/convencao-pr.yml) | Workflow **reutilizável** que valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
-| [`.github/workflows/convencao.yml`](.github/workflows/convencao.yml) | Aplica o workflow acima aos PRs deste próprio repositório, com `prefixo: github` |
+| [`.github/workflows/reutilizavel-convencao-pr.yml`](.github/workflows/reutilizavel-convencao-pr.yml) | **Reutilizável:** valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
+| [`.github/workflows/reutilizavel-auditoria-commits.yml`](.github/workflows/reutilizavel-auditoria-commits.yml) | **Reutilizável:** audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
+| [`.github/workflows/repo-convencao-pr.yml`](.github/workflows/repo-convencao-pr.yml) | Aplica a convenção do PR aos PRs deste repositório, com `prefixo: github` |
+| [`.github/workflows/repo-auditoria-commits.yml`](.github/workflows/repo-auditoria-commits.yml) | Aplica a auditoria à `main` deste repositório, com `prefixo: github` |
+| [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
-| [`.github/workflows/testes-hooks.yml`](.github/workflows/testes-hooks.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
-| [`.github/workflows/auditoria-commits.yml`](.github/workflows/auditoria-commits.yml) | Workflow **reutilizável** que audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
-| [`.github/workflows/auditoria.yml`](.github/workflows/auditoria.yml) | Aplica a auditoria à `main` deste próprio repositório, com `prefixo: github` |
+
+Os workflows seguem um prefixo por papel, porque o GitHub Actions não aceita subpastas em `.github/workflows/`:
+
+- `reutilizavel-*`: chamados pelos outros repositórios com `uses:`. Mudar o nome deles quebra quem os chama;
+- `repo-*`: rodam só neste repositório. Os que aplicam um reutilizável têm o mesmo nome depois do prefixo.
 
 ## Formulários de issue
 
@@ -49,7 +54,7 @@ Se um repositório criar a própria pasta `.github/ISSUE_TEMPLATE`, ele deixa de
 
 ## Workflow de convenção do PR
 
-O workflow reutilizável [`convencao-pr.yml`](.github/workflows/convencao-pr.yml) valida cada PR:
+O workflow reutilizável [`reutilizavel-convencao-pr.yml`](.github/workflows/reutilizavel-convencao-pr.yml) valida cada PR:
 
 1. **Título no formato do repositório:** `tipo(prefixo-N): descrição` ou, sem prefixo, `tipo: descrição`. Os tipos aceitos são `feat`, `fix`, `docs`, `refactor`, `test`, `style`, `perf`, `build`, `ci` e `chore`.
 2. **Issue citada** no corpo, com `Closes`, `Fixes`, `Resolves` ou `Refs` seguido de `#número`.
@@ -68,7 +73,7 @@ on:
     types: [opened, edited, synchronize, reopened]
 jobs:
   convencao:
-    uses: UFJF-LRM/.github/.github/workflows/convencao-pr.yml@main
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-convencao-pr.yml@main
     with:
       prefixo: api   # webui, site, mobile ou github; omita no monitora-docs
 ```
@@ -138,7 +143,7 @@ Os testes validam o hook diretamente com mensagens válidas e inválidas e fazem
 
 ## Auditoria dos commits na main
 
-O workflow reutilizável [`auditoria-commits.yml`](.github/workflows/auditoria-commits.yml) roda a cada push na `main` e confere tudo o que entrou. Ele **não bloqueia nada**, porque o plano Free não permite. Mas garante que nenhum desvio passe sem registro.
+O workflow reutilizável [`reutilizavel-auditoria-commits.yml`](.github/workflows/reutilizavel-auditoria-commits.yml) roda a cada push na `main` e confere tudo o que entrou. Ele **não bloqueia nada**, porque o plano Free não permite. Mas garante que nenhum desvio passe sem registro.
 
 | Desvio | Como é detectado |
 |---|---|
@@ -168,7 +173,7 @@ permissions:
   issues: write
 jobs:
   auditoria:
-    uses: UFJF-LRM/.github/.github/workflows/auditoria-commits.yml@main
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-commits.yml@main
     with:
       prefixo: api   # webui, site, mobile ou github; omita no monitora-docs
 ```
@@ -188,7 +193,7 @@ Este repositório segue as mesmas regras dos outros:
 - **Commits e títulos de PR:** `tipo(github-N): descrição`, em que `N` é o número da issue. Exemplo: `docs(github-7): escreve o README do repositório`.
 - **Merge só por squash.** A branch é apagada automaticamente depois do merge.
 - **Mudanças nos formulários ou no template de PR valem na hora para todos os repositórios.** Revise com cuidado e, depois do merge, abra uma issue ou um PR de teste em outro repositório para conferir.
-- **Mudanças no workflow reutilizável afetam todo repositório que o chama com `@main`.** Teste neste repositório primeiro, porque o `convencao.yml` roda o workflow nos PRs daqui.
+- **Mudanças no workflow reutilizável afetam todo repositório que o chama com `@main`.** Teste neste repositório primeiro, porque os workflows `repo-*` rodam os reutilizáveis nos PRs e pushes daqui.
 
 ## Documentação
 

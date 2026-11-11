@@ -9,6 +9,6 @@ permissions: {}
 
 jobs:
   convencao:
-    uses: ./.github/workflows/convencao-pr.yml
+    uses: ./.github/workflows/reutilizavel-convencao-pr.yml
     with:
       prefixo: github

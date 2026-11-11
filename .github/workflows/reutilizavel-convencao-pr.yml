@@ -8,12 +8,12 @@
 #       types: [opened, edited, synchronize, reopened]
 #   jobs:
 #     convencao:
-#       uses: UFJF-LRM/.github/.github/workflows/convencao-pr.yml@main
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-convencao-pr.yml@main
 #       with:
 #         prefixo: api   # webui, site, mobile, github; vazio no monitora-docs
 #
 # Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
-name: Convenção do PR (reutilizável)
+name: Reutilizável · Convenção do PR
 
 on:
   workflow_call:
