@@ -128,7 +128,7 @@ jobs:
               linhas += [
                   "## ⚠️ Force push",
                   "",
-                  f"A `main` foi reescrita: o histórico anterior terminava em `{env('ANTES', '')}`.",
+                  f"A `{env('REF', 'main')}` foi reescrita: o histórico anterior terminava em `{env('ANTES', '')}`.",
                   "Commits que estavam nesse histórico podem ter sido perdidos. Confira a comparação acima e, se necessário, recupere-os pelo SHA anterior.",
                   "",
               ]
@@ -151,7 +151,7 @@ jobs:
           for d in desvios:
               print(f"::error title=Commit fora da convenção::{d['sha'][:7]} {d['titulo']} — {'; '.join(d['problemas'])}")
           if forcado:
-              print(f"::error title=Force push na main::A main foi reescrita (antes: {env('ANTES', '')[:7]}, depois: {curto}).")
+              print(f"::error title=Force push::A {env('REF', 'main')} foi reescrita (antes: {env('ANTES', '')[:7]}, depois: {curto}).")
 
           def gh(*args):
               return subprocess.run(["gh", *args], capture_output=True, text=True)
