@@ -22,6 +22,9 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | Template padrão de pull request: issue (`Closes #`), O que muda, Como testar, Checklist e Capturas de tela |
 | [`.github/workflows/convencao-pr.yml`](.github/workflows/convencao-pr.yml) | Workflow **reutilizável** que valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
 | [`.github/workflows/convencao.yml`](.github/workflows/convencao.yml) | Aplica o workflow acima aos PRs deste próprio repositório, com `prefixo: github` |
+| [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
+| [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
+| [`.github/workflows/testes-hooks.yml`](.github/workflows/testes-hooks.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
 
 ## Formulários de issue
 
@@ -79,6 +82,57 @@ Depois, em **Settings → General → Pull Requests** do repositório:
 - ative *Automatically delete head branches*.
 
 No plano Free, o check avisa, mas não impede o merge em repositórios privados. O pedido do plano GitHub Team está em [#8](https://github.com/UFJF-LRM/.github/issues/8).
+
+## Hook local de commit-msg
+
+O [`hooks/commit-msg`](hooks/commit-msg) valida a primeira linha de cada commit **na máquina de quem está commitando**, antes de o commit existir. Ele recusa mensagens fora da convenção e mostra o formato esperado e um exemplo:
+
+```
+✖ Commit recusado: a primeira linha não segue a convenção do repositório.
+
+  Recebido:  teste
+  Formato:   tipo(api-N): descrição, em que N é o número da issue
+  Tipos:     feat, fix, docs, refactor, test, style, perf, build, ci, chore
+  Exemplo:   feat(api-12): adiciona o endpoint de publicações
+```
+
+- O prefixo vem de `git config monitora.prefixo`, então o mesmo script serve para todos os repositórios. Sem prefixo configurado, o hook recusa o commit e explica como configurar.
+- No `monitora-docs`, que não usa número da issue, o prefixo é `nenhum`, e o formato aceito é `tipo: descrição`.
+- Mensagens geradas pelo próprio git são aceitas: `Merge ...`, `Revert "..."`, `fixup! ...`, `squash! ...` e `amend! ...`.
+- Funciona no Linux, no macOS e no Git Bash do Windows, sem dependências além do bash e do git.
+
+O hook é uma ajuda, não uma garantia: `git commit --no-verify` o contorna. A garantia no servidor depende da proteção da `main` ([#8](https://github.com/UFJF-LRM/.github/issues/8)).
+
+### Como ativar num repositório
+
+Cada repositório guarda a própria cópia do hook em `.githooks/commit-msg`:
+
+```bash
+mkdir -p .githooks
+curl -fsSL https://raw.githubusercontent.com/UFJF-LRM/.github/main/hooks/commit-msg -o .githooks/commit-msg
+chmod +x .githooks/commit-msg
+git add .githooks/commit-msg
+git update-index --chmod=+x .githooks/commit-msg
+```
+
+E cada pessoa ativa uma vez no próprio clone:
+
+```bash
+git config core.hooksPath .githooks
+git config monitora.prefixo api   # webui, site, mobile, github ou nenhum
+```
+
+Para ninguém precisar lembrar, os repositórios automatizam esses dois comandos no `composer install` ou no `npm install` (no `monitora-api`, issue UFJF-LRM/monitora-api#14).
+
+`core.hooksPath` troca a pasta de hooks do git: hooks que estiverem em `.git/hooks` deixam de rodar nesse clone.
+
+### Como testar o hook
+
+```bash
+bash tests/commit-msg.sh
+```
+
+Os testes validam o hook diretamente com mensagens válidas e inválidas e fazem commits reais num repositório temporário. Ao mudar o hook, atualize os testes e as cópias em `.githooks/` dos repositórios que o usam.
 
 ## Como contribuir com este repositório
 

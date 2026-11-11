@@ -1,0 +1,39 @@
+# Testa o hook commit-msg (hooks/commit-msg) nos três sistemas que a equipe usa.
+name: Testes do hook
+
+on:
+  pull_request:
+    paths:
+      - "hooks/**"
+      - "tests/**"
+      - ".github/workflows/testes-hooks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "hooks/**"
+      - "tests/**"
+      - ".github/workflows/testes-hooks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: commit-msg (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versões
+        shell: bash
+        run: |
+          bash --version | head -1
+          git --version
+
+      - name: Rodar os testes
+        shell: bash
+        run: bash tests/commit-msg.sh
