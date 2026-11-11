@@ -1,0 +1,115 @@
+# Workflow reutilizável: atribui o autor do PR ao próprio PR e às issues que o
+# PR resolve (Closes, Fixes ou Resolves #N). Nunca muda quem já tem responsável.
+#
+# Issues não são atribuídas a quem as cria: o responsável é quem vai executar a
+# tarefa, e isso fica claro quando a pessoa abre o PR que a resolve.
+#
+# Uso em cada repositório (.github/workflows/atribuicao.yml):
+#
+#   name: Atribuição automática
+#   on:
+#     pull_request:
+#       types: [opened, reopened, edited, ready_for_review]
+#   permissions:
+#     issues: write
+#     pull-requests: write
+#   jobs:
+#     atribuicao:
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-atribuicao.yml@main
+name: Reutilizável · Atribuição automática
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  atribuir:
+    name: Atribuir autor
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Atribuir
+        shell: python
+        env:
+          # Dados do evento passam por variáveis de ambiente, nunca interpolados no script.
+          PR_NUMERO: ${{ github.event.pull_request.number }}
+          PR_AUTOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTOR_TIPO: ${{ github.event.pull_request.user.type }}
+          PR_CORPO: ${{ github.event.pull_request.body }}
+          PR_RESPONSAVEIS: ${{ toJSON(github.event.pull_request.assignees.*.login) }}
+          REPOSITORIO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import json, os, re, subprocess, sys
+
+          env = os.environ.get
+          repo = env("REPOSITORIO", "")
+          autor = env("PR_AUTOR", "")
+          numero_pr = env("PR_NUMERO", "")
+          resumo = []
+
+          def gh_api(*args):
+              r = subprocess.run(["gh", "api", *args], capture_output=True, text=True)
+              return r.returncode, r.stdout, r.stderr
+
+          def atribuir(numero, rotulo):
+              codigo, _, erro = gh_api("-X", "POST", f"repos/{repo}/issues/{numero}/assignees", "-f", f"assignees[]={autor}")
+              if codigo == 0:
+                  resumo.append(f"- {rotulo} #{numero}: atribuído a @{autor}")
+              else:
+                  resumo.append(f"- {rotulo} #{numero}: falha ao atribuir ({erro.strip()})")
+                  print(f"::warning::Falha ao atribuir @{autor} a #{numero}: {erro.strip()}")
+
+          def terminar():
+              texto = "\n".join(["### Atribuição automática", ""] + (resumo or ["- Nada a fazer."]))
+              print(texto)
+              caminho = env("GITHUB_STEP_SUMMARY")
+              if caminho:
+                  with open(caminho, "a", encoding="utf-8") as f:
+                      f.write(texto + "\n")
+              sys.exit(0)
+
+          if env("PR_AUTOR_TIPO") == "Bot" or autor.endswith("[bot]"):
+              resumo.append(f"- PR aberto por bot (@{autor}): ignorado.")
+              terminar()
+
+          # 1. O próprio PR.
+          responsaveis_pr = json.loads(env("PR_RESPONSAVEIS") or "[]") or []
+          if responsaveis_pr:
+              resumo.append(f"- PR #{numero_pr}: já tem responsável ({', '.join('@' + r for r in responsaveis_pr)}), mantido.")
+          else:
+              atribuir(numero_pr, "PR")
+
+          # 2. Issues que o PR resolve, só deste repositório. "Refs" não conta: o PR não resolve a issue.
+          padrao = re.compile(
+              r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#(?P<n>[0-9]+)",
+              re.IGNORECASE,
+          )
+          vistas = []
+          for m in padrao.finditer(env("PR_CORPO") or ""):
+              if m.group("repo") and m.group("repo").lower() != repo.lower():
+                  continue
+              n = m.group("n")
+              if n not in vistas and n != numero_pr:
+                  vistas.append(n)
+
+          for n in vistas:
+              codigo, saida, erro = gh_api(f"repos/{repo}/issues/{n}")
+              if codigo != 0:
+                  resumo.append(f"- Issue #{n}: não encontrada, ignorada.")
+                  continue
+              issue = json.loads(saida)
+              if "pull_request" in issue:
+                  resumo.append(f"- #{n}: é um PR, ignorado.")
+              elif issue.get("state") != "open":
+                  resumo.append(f"- Issue #{n}: fechada, ignorada.")
+              elif issue.get("assignees"):
+                  donos = ", ".join("@" + a["login"] for a in issue["assignees"])
+                  resumo.append(f"- Issue #{n}: já tem responsável ({donos}), mantido.")
+              else:
+                  atribuir(n, "Issue")
+
+          terminar()
