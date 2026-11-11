@@ -22,8 +22,10 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | Template padrão de pull request: issue (`Closes #`), O que muda, Como testar, Checklist e Capturas de tela |
 | [`.github/workflows/reutilizavel-convencao-pr.yml`](.github/workflows/reutilizavel-convencao-pr.yml) | **Reutilizável:** valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
 | [`.github/workflows/reutilizavel-auditoria-commits.yml`](.github/workflows/reutilizavel-auditoria-commits.yml) | **Reutilizável:** audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
+| [`.github/workflows/reutilizavel-atribuicao.yml`](.github/workflows/reutilizavel-atribuicao.yml) | **Reutilizável:** atribui o autor do PR ao próprio PR e às issues que ele resolve |
 | [`.github/workflows/repo-convencao-pr.yml`](.github/workflows/repo-convencao-pr.yml) | Aplica a convenção do PR aos PRs deste repositório, com `prefixo: github` |
 | [`.github/workflows/repo-auditoria-commits.yml`](.github/workflows/repo-auditoria-commits.yml) | Aplica a auditoria à `main` deste repositório, com `prefixo: github` |
+| [`.github/workflows/repo-atribuicao.yml`](.github/workflows/repo-atribuicao.yml) | Aplica a atribuição automática aos PRs deste repositório |
 | [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
@@ -184,6 +186,39 @@ jobs:
 | `exigir_pr` | `true` | Trata como desvio o commit que não veio de um PR. Use `false` no `monitora-docs`, que aceita push direto |
 
 As permissões `contents: read` e `issues: write` precisam estar no arquivo que chama o workflow.
+
+## Atribuição automática
+
+O workflow reutilizável [`reutilizavel-atribuicao.yml`](.github/workflows/reutilizavel-atribuicao.yml) preenche o responsável (*assignee*) quando um PR é aberto:
+
+| Item | Quem é atribuído |
+|---|---|
+| O PR | O autor do PR |
+| Issues que o PR resolve (`Closes`, `Fixes` ou `Resolves #N`) | O autor do PR |
+
+- Nunca muda quem já tem responsável.
+- Ignora issues citadas só com `Refs` (o PR não as resolve), issues fechadas, issues de outros repositórios e PRs abertos por bots.
+- **Issues não são atribuídas a quem as cria.** O responsável é quem vai executar a tarefa, e isso fica claro quando a pessoa abre o PR que a resolve. Quem começar a trabalhar antes do PR pode se atribuir manualmente, como diz o padrão de issue.
+- O que foi atribuído e o que foi ignorado aparece no resumo do job. Uma falha ao atribuir vira aviso e não quebra o PR.
+
+### Como usar num repositório
+
+Crie `.github/workflows/atribuicao.yml` no repositório:
+
+```yaml
+name: Atribuição automática
+on:
+  pull_request:
+    types: [opened, reopened, edited, ready_for_review]
+permissions:
+  issues: write
+  pull-requests: write
+jobs:
+  atribuicao:
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-atribuicao.yml@main
+```
+
+O evento `edited` faz a atribuição valer também quando alguém adiciona `Closes #N` ao corpo depois de abrir o PR.
 
 ## Como contribuir com este repositório
 

@@ -1,0 +1,14 @@
+# Aplica a atribuição automática aos PRs deste próprio repositório.
+name: Atribuição automática
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, ready_for_review]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  atribuicao:
+    uses: ./.github/workflows/reutilizavel-atribuicao.yml
