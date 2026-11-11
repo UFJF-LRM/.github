@@ -25,6 +25,8 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
 | [`.github/workflows/testes-hooks.yml`](.github/workflows/testes-hooks.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
+| [`.github/workflows/auditoria-commits.yml`](.github/workflows/auditoria-commits.yml) | Workflow **reutilizável** que audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
+| [`.github/workflows/auditoria.yml`](.github/workflows/auditoria.yml) | Aplica a auditoria à `main` deste próprio repositório, com `prefixo: github` |
 
 ## Formulários de issue
 
@@ -133,6 +135,50 @@ bash tests/commit-msg.sh
 ```
 
 Os testes validam o hook diretamente com mensagens válidas e inválidas e fazem commits reais num repositório temporário. Ao mudar o hook, atualize os testes e as cópias em `.githooks/` dos repositórios que o usam.
+
+## Auditoria dos commits na main
+
+O workflow reutilizável [`auditoria-commits.yml`](.github/workflows/auditoria-commits.yml) roda a cada push na `main` e confere tudo o que entrou. Ele **não bloqueia nada**, porque o plano Free não permite. Mas garante que nenhum desvio passe sem registro.
+
+| Desvio | Como é detectado |
+|---|---|
+| Título fora da convenção | A primeira linha do commit não segue o formato do repositório. O `Revert "..."` gerado pelo botão do GitHub é aceito |
+| Push direto, sem PR | O título não termina com ` (#N)`, o sufixo que o squash de um PR adiciona. Só vale com `exigir_pr: true` |
+| Force push | O push reescreveu a `main`. A issue registra o SHA anterior, para recuperar commits perdidos |
+
+Quando encontra um desvio, o workflow:
+
+- abre uma issue com as labels `tipo: chore` e `prioridade: alta`, listando os commits (SHA, título, autor e problema), quem fez o push, a comparação e o link da execução;
+- não abre issue repetida para o mesmo push, mesmo que o job seja executado de novo;
+- falha o job, para o alerta aparecer também na aba **Actions**.
+
+O commit não é desfeito automaticamente: reescrever a `main` sozinho é arriscado. A issue orienta o que fazer.
+
+### Como usar num repositório
+
+Crie `.github/workflows/auditoria-commits.yml` no repositório:
+
+```yaml
+name: Auditoria dos commits
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  auditoria:
+    uses: UFJF-LRM/.github/.github/workflows/auditoria-commits.yml@main
+    with:
+      prefixo: api   # webui, site, mobile ou github; omita no monitora-docs
+```
+
+| Entrada | Padrão | Uso |
+|---|---|---|
+| `prefixo` | vazio | Prefixo da task no título. Vazio exige o formato `tipo: descrição` |
+| `exigir_pr` | `true` | Trata como desvio o commit que não veio de um PR. Use `false` no `monitora-docs`, que aceita push direto |
+
+As permissões `contents: read` e `issues: write` precisam estar no arquivo que chama o workflow.
 
 ## Como contribuir com este repositório
 

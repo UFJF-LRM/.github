@@ -1,0 +1,177 @@
+# Workflow reutilizável: audita os commits que entram na main e abre uma issue
+# de alerta quando algum foge da convenção. Não bloqueia nada (o plano Free não
+# permite), mas garante que nenhum desvio passe sem registro.
+#
+# Uso em cada repositório (.github/workflows/auditoria-commits.yml):
+#
+#   name: Auditoria dos commits
+#   on:
+#     push:
+#       branches: [main]
+#   permissions:
+#     contents: read
+#     issues: write
+#   jobs:
+#     auditoria:
+#       uses: UFJF-LRM/.github/.github/workflows/auditoria-commits.yml@main
+#       with:
+#         prefixo: api   # webui, site, mobile, github; vazio no monitora-docs
+#         # exigir_pr: false   # no monitora-docs, que aceita push direto
+#
+# Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
+name: Auditoria dos commits (reutilizável)
+
+on:
+  workflow_call:
+    inputs:
+      prefixo:
+        description: 'Prefixo da task no título (api, webui, site, mobile, github). Vazio para o formato "tipo: descrição".'
+        type: string
+        required: false
+        default: ""
+      exigir_pr:
+        description: 'Trata como desvio o commit que não veio de um PR (título sem o sufixo " (#N)" do squash).'
+        type: boolean
+        required: false
+        default: true
+
+permissions: {}
+
+jobs:
+  auditar:
+    name: Auditar commits
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Auditar
+        shell: python
+        env:
+          # Dados do evento passam por variáveis de ambiente, nunca interpolados no script.
+          COMMITS: ${{ toJSON(github.event.commits) }}
+          FORCADO: ${{ github.event.forced }}
+          ANTES: ${{ github.event.before }}
+          DEPOIS: ${{ github.event.after }}
+          COMPARE: ${{ github.event.compare }}
+          QUEM_FEZ_PUSH: ${{ github.event.pusher.name }}
+          REF: ${{ github.ref_name }}
+          REPOSITORIO: ${{ github.repository }}
+          URL_EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PREFIXO: ${{ inputs.prefixo }}
+          EXIGIR_PR: ${{ inputs.exigir_pr }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          import json, os, re, subprocess, sys, tempfile
+
+          TIPOS = "feat|fix|docs|refactor|test|style|perf|build|ci|chore"
+          CONVENCAO = "https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md"
+          env = os.environ.get
+
+          prefixo = env("PREFIXO", "")
+          if prefixo and not re.fullmatch(r"[a-z]+", prefixo):
+              print(f"::error::A entrada 'prefixo' deve ter só letras minúsculas (recebido: '{prefixo}').")
+              sys.exit(1)
+          if prefixo:
+              padrao = re.compile(rf"^({TIPOS})\({prefixo}-[0-9]+\): .+")
+              formato = f"tipo({prefixo}-N): descrição"
+          else:
+              padrao = re.compile(rf"^({TIPOS}): .+")
+              formato = "tipo: descrição"
+          exigir_pr = env("EXIGIR_PR", "true") == "true"
+          sufixo_pr = re.compile(r" \(#[0-9]+\)$")
+          revert = re.compile(r'^Revert ".+"')
+
+          commits = json.loads(env("COMMITS") or "null") or []
+          desvios = []
+          for c in commits:
+              titulo = (c.get("message") or "").splitlines()[0].rstrip("\r") if c.get("message") else ""
+              problemas = []
+              if not revert.match(titulo) and not padrao.match(titulo):
+                  problemas.append(f"fora do formato `{formato}`")
+              if exigir_pr and not sufixo_pr.search(titulo):
+                  problemas.append("não veio de um PR (push direto)")
+              if problemas:
+                  autor = c.get("author") or {}
+                  desvios.append({
+                      "sha": c.get("id", ""),
+                      "url": c.get("url", ""),
+                      "titulo": titulo,
+                      "autor": ("@" + autor["username"]) if autor.get("username") else (autor.get("name") or "?"),
+                      "problemas": problemas,
+                  })
+
+          forcado = env("FORCADO") == "true"
+
+          if not desvios and not forcado:
+              print(f"✅ {len(commits)} commit(s) auditado(s), todos na convenção.")
+              sys.exit(0)
+
+          depois = env("DEPOIS", "")
+          curto = depois[:7]
+          repositorio = env("REPOSITORIO", "")
+
+          def celula(texto, limite=100):
+              texto = texto if len(texto) <= limite else texto[: limite - 1] + "…"
+              return texto.replace("|", "\\|").replace("`", "'")
+
+          linhas = [
+              f"Push na `{env('REF', 'main')}` com desvios da [convenção de commit]({CONVENCAO}).",
+              "",
+              f"- **Push:** `{depois}`",
+              f"- **Feito por:** @{env('QUEM_FEZ_PUSH', '?')}",
+              f"- **Comparação:** {env('COMPARE', '')}",
+              f"- **Execução:** {env('URL_EXECUCAO', '')}",
+              "",
+          ]
+          if forcado:
+              linhas += [
+                  "## ⚠️ Force push",
+                  "",
+                  f"A `{env('REF', 'main')}` foi reescrita: o histórico anterior terminava em `{env('ANTES', '')}`.",
+                  "Commits que estavam nesse histórico podem ter sido perdidos. Confira a comparação acima e, se necessário, recupere-os pelo SHA anterior.",
+                  "",
+              ]
+          if desvios:
+              linhas += ["## Commits fora da convenção", "", "| Commit | Título | Autor | Problema |", "|---|---|---|---|"]
+              for d in desvios:
+                  linhas.append(f"| [`{d['sha'][:7]}`]({d['url']}) | `{celula(d['titulo'])}` | {celula(d['autor'], 40)} | {'; '.join(d['problemas'])} |")
+              linhas.append("")
+          linhas += [
+              "## O que fazer",
+              "",
+              "- Não reescreva a `main` para corrigir a mensagem: isso exige outro force push e afeta todo mundo.",
+              "- Confira se a mudança está certa e, se faltar uma issue ou um PR, crie-os para registrar o que entrou.",
+              "- Relembre a convenção e o [padrão de PR](https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-pr.md) a quem fez o push, e feche esta issue.",
+              "",
+              f"<!-- auditoria-commits {depois} -->",
+          ]
+          corpo = "\n".join(linhas)
+
+          for d in desvios:
+              print(f"::error title=Commit fora da convenção::{d['sha'][:7]} {d['titulo']} — {'; '.join(d['problemas'])}")
+          if forcado:
+              print(f"::error title=Force push::A {env('REF', 'main')} foi reescrita (antes: {env('ANTES', '')[:7]}, depois: {curto}).")
+
+          def gh(*args):
+              return subprocess.run(["gh", *args], capture_output=True, text=True)
+
+          # Não abre issue repetida para o mesmo push (por exemplo, ao reexecutar o job).
+          busca = gh("issue", "list", "--repo", repositorio, "--state", "all", "--search", f"{depois} in:body", "--json", "number", "--jq", ".[0].number // empty")
+          if busca.returncode == 0 and busca.stdout.strip():
+              print(f"Já existe a issue #{busca.stdout.strip()} para este push.")
+              sys.exit(1)
+
+          with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+              f.write(corpo)
+          titulo_issue = f"Auditoria: {'force push e ' if forcado and desvios else 'force push' if forcado else ''}{'commits fora da convenção' if desvios else ''} na {env('REF', 'main')} ({curto})"
+          base = ["issue", "create", "--repo", repositorio, "--title", titulo_issue, "--body-file", f.name]
+          criada = gh(*base, "--label", "tipo: chore", "--label", "prioridade: alta")
+          if criada.returncode != 0:
+              print(f"::warning::Não foi possível aplicar as labels ({criada.stderr.strip()}). Criando a issue sem labels.")
+              criada = gh(*base)
+          if criada.returncode != 0:
+              print(f"::error::Falha ao abrir a issue de alerta: {criada.stderr.strip()}")
+          else:
+              print(f"Issue de alerta: {criada.stdout.strip()}")
+          sys.exit(1)
