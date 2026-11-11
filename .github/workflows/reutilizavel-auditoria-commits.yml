@@ -13,13 +13,13 @@
 #     issues: write
 #   jobs:
 #     auditoria:
-#       uses: UFJF-LRM/.github/.github/workflows/auditoria-commits.yml@main
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-commits.yml@main
 #       with:
 #         prefixo: api   # webui, site, mobile, github; vazio no monitora-docs
 #         # exigir_pr: false   # no monitora-docs, que aceita push direto
 #
 # Convenção: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md
-name: Auditoria dos commits (reutilizável)
+name: Reutilizável · Auditoria dos commits
 
 on:
   workflow_call:

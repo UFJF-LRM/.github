@@ -6,13 +6,13 @@ on:
     paths:
       - "hooks/**"
       - "tests/**"
-      - ".github/workflows/testes-hooks.yml"
+      - ".github/workflows/repo-testes-hook.yml"
   push:
     branches: [main]
     paths:
       - "hooks/**"
       - "tests/**"
-      - ".github/workflows/testes-hooks.yml"
+      - ".github/workflows/repo-testes-hook.yml"
 
 permissions:
   contents: read

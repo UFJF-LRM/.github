@@ -11,6 +11,6 @@ permissions:
 
 jobs:
   auditoria:
-    uses: ./.github/workflows/auditoria-commits.yml
+    uses: ./.github/workflows/reutilizavel-auditoria-commits.yml
     with:
       prefixo: github
