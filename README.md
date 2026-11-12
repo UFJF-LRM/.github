@@ -23,10 +23,12 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/workflows/reutilizavel-convencao-pr.yml`](.github/workflows/reutilizavel-convencao-pr.yml) | **Reutilizável:** valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
 | [`.github/workflows/reutilizavel-auditoria-commits.yml`](.github/workflows/reutilizavel-auditoria-commits.yml) | **Reutilizável:** audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
 | [`.github/workflows/reutilizavel-atribuicao.yml`](.github/workflows/reutilizavel-atribuicao.yml) | **Reutilizável:** atribui o autor do PR ao próprio PR e às issues que ele resolve |
+| [`.github/workflows/reutilizavel-em-andamento.yml`](.github/workflows/reutilizavel-em-andamento.yml) | **Reutilizável:** move a issue para Em andamento no projeto Monitora quando a branch dela chega ao GitHub |
 | [`.github/workflows/repo-convencao-pr.yml`](.github/workflows/repo-convencao-pr.yml) | Aplica a convenção do PR aos PRs deste repositório, com `prefixo: github` |
 | [`.github/workflows/repo-auditoria-commits.yml`](.github/workflows/repo-auditoria-commits.yml) | Aplica a auditoria à `main` deste repositório, com `prefixo: github` |
 | [`.github/workflows/repo-atribuicao.yml`](.github/workflows/repo-atribuicao.yml) | Aplica a atribuição automática aos PRs deste repositório |
 | [`.github/workflows/repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) | Verifica se o GitHub App da organização gera token e lê o projeto Monitora |
+| [`.github/workflows/repo-em-andamento.yml`](.github/workflows/repo-em-andamento.yml) | Aplica a mudança para Em andamento às issues deste repositório |
 | [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
@@ -261,6 +263,50 @@ A chave privada **nunca** vai para arquivos do repositório, issues, PRs ou logs
 ```
 
 O workflow [`repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) faz exatamente isso. Para conferir se o App continua funcionando, rode-o na aba **Actions → Verificar o GitHub App → Run workflow**.
+
+## Em andamento automático
+
+O workflow reutilizável [`reutilizavel-em-andamento.yml`](.github/workflows/reutilizavel-em-andamento.yml) move a issue para **Em andamento** no projeto Monitora quando a branch dela chega ao GitHub.
+
+| Etapa | Gatilho | Tipo |
+|---|---|---|
+| Backlog → Pronto para começar | Triagem: issue clara e sem dependências | manual |
+| Alguém pega a tarefa | Assign (avatar no card, sem mudar o status) | manual |
+| → **Em andamento** | A branch `tipo/prefixo-N-descricao` chega ao GitHub | **automático (este workflow)** |
+| → Em revisão | PR aberto com `Closes #N` | automático (projeto) |
+| → Concluído | PR mesclado | automático (projeto) |
+
+- **Gatilho:** o evento `create` do GitHub. Ele acontece no push de uma branch nova, na opção *Create a branch* da issue e no `gh issue develop`. Uma branch que existe só no `git` local não move o card até o primeiro push.
+- **Só avança:** move a partir de Backlog, Pronto para começar ou de um Status vazio. Uma issue em Em revisão ou Concluído não volta.
+- **Adiciona ao projeto:** se a issue ainda não estiver no projeto, ela é adicionada.
+- **Ignora:** branches fora do padrão, tags, números que são PRs, issues fechadas e números inexistentes.
+- **Credencial:** usa o [GitHub App da organização](#github-app-da-organização), porque o `GITHUB_TOKEN` não altera Projects da organização. O repositório precisa da variable `MONITORA_BOT_CLIENT_ID` e do secret `MONITORA_BOT_PRIVATE_KEY`.
+- **Limitação:** o evento `create` só dispara workflows que estão na branch padrão. Por isso, este workflow não roda no PR que o cria: só depois do merge.
+
+### Como usar num repositório
+
+Crie `.github/workflows/em-andamento.yml` no repositório:
+
+```yaml
+name: Em andamento
+on: create
+permissions: {}
+jobs:
+  em-andamento:
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-em-andamento.yml@main
+    with:
+      prefixo: api   # webui, site, mobile ou github
+      app_client_id: ${{ vars.MONITORA_BOT_CLIENT_ID }}
+    secrets:
+      app_private_key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}
+```
+
+| Entrada | Padrão | Uso |
+|---|---|---|
+| `prefixo` | (obrigatório) | Prefixo da task no nome da branch |
+| `app_client_id` | (obrigatório) | Client ID do App, vindo da variable `MONITORA_BOT_CLIENT_ID` |
+| `projeto` | `1` | Número do projeto da organização |
+| secret `app_private_key` | (obrigatório) | Chave do App, vinda do secret `MONITORA_BOT_PRIVATE_KEY` |
 
 ## Como contribuir com este repositório
 

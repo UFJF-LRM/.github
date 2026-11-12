@@ -1,0 +1,16 @@
+# Aplica a mudança automática para "Em andamento" às issues deste repositório.
+# Só dispara com o arquivo na branch padrão (limitação do evento create).
+name: Em andamento
+
+on: create
+
+permissions: {}
+
+jobs:
+  em-andamento:
+    uses: ./.github/workflows/reutilizavel-em-andamento.yml
+    with:
+      prefixo: github
+      app_client_id: ${{ vars.MONITORA_BOT_CLIENT_ID }}
+    secrets:
+      app_private_key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}

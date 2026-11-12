@@ -1,0 +1,196 @@
+# Workflow reutilizável: quando a branch de uma issue chega ao GitHub, move a
+# issue para "Em andamento" no projeto Monitora. Só avança o status: uma issue
+# já em "Em revisão" ou "Concluído" não é alterada.
+#
+# A branch precisa seguir o padrão tipo/prefixo-N-descricao. Ela pode chegar por
+# push, pela interface do GitHub ou pelo gh issue develop (gh iniciar N).
+#
+# Uso em cada repositório (.github/workflows/em-andamento.yml):
+#
+#   name: Em andamento
+#   on: create
+#   permissions: {}
+#   jobs:
+#     em-andamento:
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-em-andamento.yml@main
+#       with:
+#         prefixo: api   # webui, site, mobile ou github
+#         app_client_id: ${{ vars.MONITORA_BOT_CLIENT_ID }}
+#       secrets:
+#         app_private_key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}
+#
+# O evento create só dispara workflows que estão na branch padrão do repositório.
+name: Reutilizável · Em andamento
+
+on:
+  workflow_call:
+    inputs:
+      prefixo:
+        description: Prefixo da task no nome da branch (api, webui, site, mobile, github).
+        type: string
+        required: true
+      app_client_id:
+        description: Client ID do GitHub App da organização (variable MONITORA_BOT_CLIENT_ID).
+        type: string
+        required: true
+      projeto:
+        description: Número do projeto da organização.
+        type: number
+        required: false
+        default: 1
+    secrets:
+      app_private_key:
+        description: Chave privada do GitHub App da organização (secret MONITORA_BOT_PRIVATE_KEY).
+        required: true
+
+permissions: {}
+
+jobs:
+  mover:
+    name: Mover para Em andamento
+    runs-on: ubuntu-latest
+    steps:
+      - name: Identificar a issue pela branch
+        id: branch
+        shell: python
+        env:
+          REF: ${{ github.event.ref }}
+          REF_TYPE: ${{ github.event.ref_type }}
+          PREFIXO: ${{ inputs.prefixo }}
+        run: |
+          import os, re
+          env = os.environ.get
+          numero = ""
+          prefixo = env("PREFIXO", "")
+          if not re.fullmatch(r"[a-z]+", prefixo):
+              print(f"::error::A entrada 'prefixo' deve ter só letras minúsculas (recebido: '{prefixo}').")
+              raise SystemExit(1)
+          if env("REF_TYPE") != "branch":
+              motivo = f"Evento de {env('REF_TYPE')}, não de branch: nada a fazer."
+          else:
+              m = re.match(rf"^[a-z]+/{prefixo}-([0-9]+)-", env("REF", ""))
+              if m:
+                  numero = m.group(1)
+                  motivo = f"Branch {env('REF')} → issue #{numero}."
+              else:
+                  motivo = f"A branch {env('REF')} não segue o padrão tipo/{prefixo}-N-descricao: nada a fazer."
+          print(motivo)
+          with open(env("GITHUB_OUTPUT"), "a") as f:
+              f.write(f"numero={numero}\n")
+          with open(env("GITHUB_STEP_SUMMARY"), "a", encoding="utf-8") as f:
+              f.write(f"### Em andamento\n\n- {motivo}\n")
+
+      - name: Gerar token do App
+        id: app
+        if: steps.branch.outputs.numero != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.app_private_key }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Atualizar o Status no projeto
+        if: steps.branch.outputs.numero != ''
+        shell: python
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          NUMERO: ${{ steps.branch.outputs.numero }}
+          PROJETO: ${{ inputs.projeto }}
+          ORG: ${{ github.repository_owner }}
+          REPOSITORIO: ${{ github.repository }}
+        run: |
+          import json, os, subprocess, sys
+
+          env = os.environ.get
+          ALVO = "Em andamento"
+          PODE_AVANCAR = {None, "Backlog", "Pronto para começar"}
+          org = env("ORG")
+          dono, nome = env("REPOSITORIO").split("/", 1)
+          numero = int(env("NUMERO"))
+          projeto_num = int(env("PROJETO"))
+
+          def graphql(query, **variaveis):
+              args = ["gh", "api", "graphql", "-f", f"query={query}"]
+              for k, v in variaveis.items():
+                  args += ["-F" if isinstance(v, int) else "-f", f"{k}={v}"]
+              r = subprocess.run(args, capture_output=True, text=True)
+              # Um número inexistente volta como erro NOT_FOUND junto com data parcial (campo nulo):
+              # nesse caso, usa os dados; só falha se a API não devolver dado nenhum.
+              try:
+                  resposta = json.loads(r.stdout or "{}")
+              except json.JSONDecodeError:
+                  resposta = {}
+              erros = resposta.get("errors") or []
+              if resposta.get("data") is not None and all(e.get("type") == "NOT_FOUND" for e in erros):
+                  return resposta["data"]
+              print(f"::error::Falha na API do GitHub: {r.stderr.strip() or erros}")
+              sys.exit(1)
+
+          def registrar(texto, aviso=False):
+              print(("::warning::" if aviso else "") + texto)
+              with open(env("GITHUB_STEP_SUMMARY", os.devnull), "a", encoding="utf-8") as f:
+                  f.write(f"- {texto}\n")
+
+          projeto = graphql(
+              """query($org: String!, $num: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $num) {
+                    id
+                    field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+                  }
+                }
+              }""", org=org, num=projeto_num)["organization"]["projectV2"]
+          campo = projeto["field"]
+          opcao = next((o["id"] for o in campo["options"] if o["name"] == ALVO), None)
+          if not opcao:
+              registrar(f"O projeto não tem a opção de Status '{ALVO}'.", aviso=True)
+              sys.exit(0)
+
+          issue = graphql(
+              """query($dono: String!, $nome: String!, $num: Int!) {
+                repository(owner: $dono, name: $nome) {
+                  issueOrPullRequest(number: $num) {
+                    __typename
+                    ... on Issue {
+                      id state
+                      projectItems(first: 20) {
+                        nodes {
+                          id
+                          project { id }
+                          fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }""", dono=dono, nome=nome, num=numero)["repository"]["issueOrPullRequest"]
+
+          if not issue or issue["__typename"] != "Issue":
+              registrar(f"#{numero} não é uma issue deste repositório: nada a fazer.")
+              sys.exit(0)
+          if issue["state"] != "OPEN":
+              registrar(f"A issue #{numero} está fechada: nada a fazer.")
+              sys.exit(0)
+
+          item = next((n for n in issue["projectItems"]["nodes"] if n["project"]["id"] == projeto["id"]), None)
+          if item is None:
+              item_id = graphql(
+                  """mutation($p: ID!, $c: ID!) { addProjectV2ItemById(input: {projectId: $p, contentId: $c}) { item { id } } }""",
+                  p=projeto["id"], c=issue["id"])["addProjectV2ItemById"]["item"]["id"]
+              atual = None
+              registrar(f"A issue #{numero} não estava no projeto e foi adicionada.")
+          else:
+              item_id = item["id"]
+              atual = (item.get("fieldValueByName") or {}).get("name")
+
+          if atual not in PODE_AVANCAR:
+              registrar(f"A issue #{numero} já está em '{atual}': o Status não volta para '{ALVO}'.")
+              sys.exit(0)
+
+          graphql(
+              """mutation($p: ID!, $i: ID!, $f: ID!, $o: String!) {
+                updateProjectV2ItemFieldValue(input: {projectId: $p, itemId: $i, fieldId: $f, value: {singleSelectOptionId: $o}}) {
+                  projectV2Item { id }
+                }
+              }""", p=projeto["id"], i=item_id, f=campo["id"], o=opcao)
+          registrar(f"Issue #{numero}: '{atual or 'sem Status'}' → '{ALVO}'.")
