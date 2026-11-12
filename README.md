@@ -26,6 +26,7 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/workflows/repo-convencao-pr.yml`](.github/workflows/repo-convencao-pr.yml) | Aplica a convenção do PR aos PRs deste repositório, com `prefixo: github` |
 | [`.github/workflows/repo-auditoria-commits.yml`](.github/workflows/repo-auditoria-commits.yml) | Aplica a auditoria à `main` deste repositório, com `prefixo: github` |
 | [`.github/workflows/repo-atribuicao.yml`](.github/workflows/repo-atribuicao.yml) | Aplica a atribuição automática aos PRs deste repositório |
+| [`.github/workflows/repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) | Verifica se o GitHub App da organização gera token e lê o projeto Monitora |
 | [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
@@ -219,6 +220,47 @@ jobs:
 ```
 
 O evento `edited` faz a atribuição valer também quando alguém adiciona `Closes #N` ao corpo depois de abrir o PR.
+
+## GitHub App da organização
+
+Algumas automações precisam alterar o projeto [Monitora](https://github.com/orgs/UFJF-LRM/projects/1), e o `GITHUB_TOKEN` do Actions não tem acesso a Projects da organização. Para isso existe o GitHub App **`ufjf-lrm-monitora-bot`**, que gera tokens de curta duração (uma hora) para os workflows.
+
+| Item | Valor |
+|---|---|
+| Permissões | **Organization → Projects:** leitura e escrita. **Repository → Issues** e **Metadata:** só leitura |
+| Webhook | Desativado: o App só é usado pelos workflows |
+| Instalação | Só na organização UFJF-LRM, nos repositórios do Monitora |
+| Administração | Owners da organização, em **Organization settings → Developer settings → GitHub Apps** |
+
+### Credenciais
+
+No plano Free, *secrets* e *variables* da organização **não chegam aos repositórios privados**. Por isso, cada repositório que usa o App guarda as próprias credenciais, em **Settings → Secrets and variables → Actions**:
+
+| Tipo | Nome | Conteúdo |
+|---|---|---|
+| Variable | `MONITORA_BOT_CLIENT_ID` | O *Client ID* do App (não é segredo) |
+| Secret | `MONITORA_BOT_PRIVATE_KEY` | O conteúdo inteiro do arquivo `.pem` da chave privada |
+
+A chave privada **nunca** vai para arquivos do repositório, issues, PRs ou logs. Quem tiver o `.pem` deve guardá-lo num gerenciador de senhas e apagar a cópia baixada. Se a chave vazar, gere uma nova na página do App, revogue a antiga e atualize o secret nos repositórios.
+
+### Como usar num workflow
+
+```yaml
+- name: Gerar token do App
+  id: app
+  uses: actions/create-github-app-token@v3
+  with:
+    client-id: ${{ vars.MONITORA_BOT_CLIENT_ID }}
+    private-key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}
+    owner: UFJF-LRM
+
+- name: Usar o token
+  env:
+    GH_TOKEN: ${{ steps.app.outputs.token }}
+  run: gh api graphql -f query='query { organization(login: "UFJF-LRM") { projectV2(number: 1) { title } } }'
+```
+
+O workflow [`repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) faz exatamente isso. Para conferir se o App continua funcionando, rode-o na aba **Actions → Verificar o GitHub App → Run workflow**.
 
 ## Como contribuir com este repositório
 
