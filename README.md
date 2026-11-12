@@ -259,7 +259,8 @@ A chave privada **nunca** vai para arquivos do repositório, issues, PRs ou logs
 - name: Usar o token
   env:
     GH_TOKEN: ${{ steps.app.outputs.token }}
-  run: gh api graphql -f query='query { organization(login: "UFJF-LRM") { projectV2(number: 1) { title } } }'
+  run: |
+    gh api graphql -f query='query { organization(login: "UFJF-LRM") { projectV2(number: 1) { title } } }'
 ```
 
 O workflow [`repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) faz exatamente isso. Para conferir se o App continua funcionando, rode-o na aba **Actions → Verificar o GitHub App → Run workflow**.
