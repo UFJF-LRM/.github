@@ -285,7 +285,10 @@ O workflow reutilizável [`reutilizavel-em-andamento.yml`](.github/workflows/reu
 - **Adiciona ao projeto:** se a issue ainda não estiver no projeto, ela é adicionada.
 - **Ignora:** branches fora do padrão, tags, números que são PRs, issues fechadas e números inexistentes.
 - **Credencial:** usa o [GitHub App da organização](#github-app-da-organização), porque o `GITHUB_TOKEN` não altera Projects da organização. O repositório precisa da variable `MONITORA_BOT_CLIENT_ID` e do secret `MONITORA_BOT_PRIVATE_KEY`.
-- **Limitação:** o evento `create` só dispara workflows que estão na branch padrão. Por isso, este workflow não roda no PR que o cria: só depois do merge.
+- **Qual versão roda:** o evento `create` usa o workflow que está no **commit para onde a branch nova aponta**:
+  - uma branch criada a partir da `main` (pela issue, pelo `gh iniciar` ou por push) usa a versão da `main`;
+  - a branch do PR que ativa o workflow já traz o arquivo, então o próprio PR testa a ativação: a issue dele vai para Em andamento no primeiro push;
+  - uma branch criada a partir de um commit sem o arquivo não move o card.
 
 ### Como usar num repositório
 

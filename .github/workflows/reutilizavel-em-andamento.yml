@@ -19,7 +19,9 @@
 #       secrets:
 #         app_private_key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}
 #
-# O evento create só dispara workflows que estão na branch padrão do repositório.
+# O evento create roda a versão deste arquivo que está no commit da branch nova.
+# Uma branch criada a partir da main usa a da main; o PR que ativa o workflow
+# já o testa na própria branch.
 name: Reutilizável · Em andamento
 
 on:

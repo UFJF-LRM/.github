@@ -1,5 +1,5 @@
 # Aplica a mudança automática para "Em andamento" às issues deste repositório.
-# Só dispara com o arquivo na branch padrão (limitação do evento create).
+# Roda a versão deste arquivo que está no commit da branch nova.
 name: Em andamento
 
 on: create
