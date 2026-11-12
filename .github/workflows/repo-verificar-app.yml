@@ -1,0 +1,56 @@
+# Verifica se o GitHub App da organização (ufjf-lrm-monitora-bot) está
+# funcionando: gera um token de curta duração e lê o projeto Monitora.
+# Roda quando este arquivo muda num PR e pode ser disparado à mão na aba Actions.
+name: Verificar o GitHub App
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/repo-verificar-app.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verificar:
+    name: Gerar token e ler o projeto
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gerar token do App
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MONITORA_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MONITORA_BOT_PRIVATE_KEY }}
+          owner: UFJF-LRM
+
+      - name: Ler o projeto Monitora
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          resposta=$(gh api graphql -f query='
+            query {
+              organization(login: "UFJF-LRM") {
+                projectV2(number: 1) {
+                  title
+                  items(first: 1) { totalCount }
+                  field(name: "Status") {
+                    ... on ProjectV2SingleSelectField { options { name } }
+                  }
+                }
+              }
+            }')
+          titulo=$(echo "$resposta" | jq -r '.data.organization.projectV2.title')
+          itens=$(echo "$resposta" | jq -r '.data.organization.projectV2.items.totalCount')
+          status=$(echo "$resposta" | jq -r '[.data.organization.projectV2.field.options[].name] | join(", ")')
+          if [ -z "$titulo" ] || [ "$titulo" = "null" ]; then
+            echo "::error::O token do App não conseguiu ler o projeto Monitora. Confira a permissão Organization → Projects do App."
+            exit 1
+          fi
+          {
+            echo "### GitHub App funcionando"
+            echo ""
+            echo "- Projeto: **$titulo** ($itens itens)"
+            echo "- Status disponíveis: $status"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
