@@ -29,8 +29,8 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/workflows/repo-atribuicao.yml`](.github/workflows/repo-atribuicao.yml) | Aplica a atribuição automática aos PRs deste repositório |
 | [`.github/workflows/repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) | Verifica se o GitHub App da organização gera token e lê o projeto Monitora |
 | [`.github/workflows/repo-em-andamento.yml`](.github/workflows/repo-em-andamento.yml) | Aplica a mudança para Em andamento às issues deste repositório |
-| [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
-| [`.github/workflows/repo-testes-iniciar.yml`](.github/workflows/repo-testes-iniciar.yml) | Roda os testes do `gh iniciar` no Linux, no macOS e no Windows |
+| [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux e no Windows (Git Bash) |
+| [`.github/workflows/repo-testes-iniciar.yml`](.github/workflows/repo-testes-iniciar.yml) | Roda os testes do `gh iniciar` no Linux e no Windows (Git Bash) |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
 | [`scripts/iniciar`](scripts/iniciar) | Comando `gh iniciar N`: cria a branch da issue no padrão, direto no GitHub e ligada à issue |
@@ -114,7 +114,7 @@ O [`hooks/commit-msg`](hooks/commit-msg) valida a primeira linha de cada commit 
 - O prefixo vem de `git config monitora.prefixo`, então o mesmo script serve para todos os repositórios. Sem prefixo configurado, o hook recusa o commit e explica como configurar.
 - No `monitora-docs`, que não usa número da issue, o prefixo é `nenhum`, e o formato aceito é `tipo: descrição`.
 - Mensagens geradas pelo próprio git são aceitas: `Merge ...`, `Revert "..."`, `fixup! ...`, `squash! ...` e `amend! ...`.
-- Funciona no Linux, no macOS e no Git Bash do Windows, sem dependências além do bash e do git.
+- Testado no Linux e no Git Bash do Windows, sem dependências além do bash e do git. Ver [Sistemas testados](#sistemas-testados).
 
 O hook é uma ajuda, não uma garantia: `git commit --no-verify` o contorna. A garantia no servidor depende da proteção da `main` ([#8](https://github.com/UFJF-LRM/.github/issues/8)).
 
@@ -349,9 +349,20 @@ curl -fsSL https://raw.githubusercontent.com/UFJF-LRM/.github/main/scripts/inici
 gh alias set --shell iniciar 'bash ~/.monitora/iniciar "$@"'
 ```
 
-Para atualizar, rode o `curl` de novo. Para testar o script: `bash tests/iniciar.sh`.
+Para atualizar, rode o `curl` de novo. Para testar o script: `bash tests/iniciar.sh`. Os sistemas testados estão em [Sistemas testados](#sistemas-testados).
 
 A alternativa seria publicar o comando como extensão do `gh` (`gh extension install UFJF-LRM/gh-iniciar`), que é mais fácil de atualizar, mas exige um repositório próprio. Por enquanto, o alias é suficiente.
+
+## Sistemas testados
+
+Os testes do hook e do `gh iniciar` rodam no CI no **Linux** (`ubuntu-latest`) e no **Windows com Git Bash** (`windows-latest`), que são os ambientes da equipe.
+
+O macOS saiu dos testes ([#34](https://github.com/UFJF-LRM/.github/issues/34)) porque ninguém da equipe usa Mac e o runner do macOS era o que mais atrasava os PRs. Mesmo assim, os scripts continuam escritos para o **bash 3.2**, que é a versão do macOS:
+
+- nada de recursos do bash 4 ou superior (como `declare -A` e `${var,,}`);
+- em `${texto//de/para}`, a parte que substitui fica **sem aspas**: o bash 3.2 não remove essas aspas e as colocaria no texto ([#32](https://github.com/UFJF-LRM/.github/issues/32)).
+
+Se alguém da equipe passar a usar Mac, volte `macos-latest` para a lista `matrix.os` de `repo-testes-hook.yml` e de `repo-testes-iniciar.yml`.
 
 ## Como contribuir com este repositório
 

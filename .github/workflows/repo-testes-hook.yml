@@ -1,4 +1,4 @@
-# Testa o hook commit-msg (hooks/commit-msg) nos três sistemas que a equipe usa.
+# Testa o hook commit-msg (hooks/commit-msg) no Linux e no Windows (Git Bash).
 name: Testes do hook
 
 on:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
