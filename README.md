@@ -357,12 +357,16 @@ A alternativa seria publicar o comando como extensão do `gh` (`gh extension ins
 
 Os testes do hook e do `gh iniciar` rodam no CI no **Linux** (`ubuntu-latest`) e no **Windows com Git Bash** (`windows-latest`), que são os ambientes da equipe.
 
-O macOS saiu dos testes ([#34](https://github.com/UFJF-LRM/.github/issues/34)) porque ninguém da equipe usa Mac e o runner do macOS era o que mais atrasava os PRs. Mesmo assim, os scripts continuam escritos para o **bash 3.2**, que é a versão do macOS:
+O macOS saiu dos testes ([#34](https://github.com/UFJF-LRM/.github/issues/34)) porque ninguém da equipe usa Mac e o runner do macOS era o que mais atrasava os PRs.
+
+Os scripts foram escritos pensando no **bash 3.2**, que é a versão do macOS, mas **não são testados no macOS** e podem se comportar diferente lá. Há uma diferença conhecida: no último teste no macOS, o `gh iniciar` aceitou o prefixo `API`, em maiúsculas, que deveria recusar ([execução](https://github.com/UFJF-LRM/.github/actions/runs/43288390585/job/131427783335)). Isso não tem efeito no Linux nem no Windows.
+
+Ao mexer nos scripts, siga estas regras para não piorar a compatibilidade:
 
 - nada de recursos do bash 4 ou superior (como `declare -A` e `${var,,}`);
 - em `${texto//de/para}`, a parte que substitui fica **sem aspas**: o bash 3.2 não remove essas aspas e as colocaria no texto ([#32](https://github.com/UFJF-LRM/.github/issues/32)).
 
-Se alguém da equipe passar a usar Mac, volte `macos-latest` para a lista `matrix.os` de `repo-testes-hook.yml` e de `repo-testes-iniciar.yml`.
+Se alguém da equipe passar a usar Mac, volte `macos-latest` para a lista `matrix.os` de `repo-testes-hook.yml` e de `repo-testes-iniciar.yml` e corrija o que os testes apontarem, começando pela diferença acima.
 
 ## Como contribuir com este repositório
 
