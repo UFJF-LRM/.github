@@ -1,0 +1,39 @@
+# Testa o comando gh iniciar (scripts/iniciar) nos três sistemas que a equipe usa.
+name: Testes do gh iniciar
+
+on:
+  pull_request:
+    paths:
+      - "scripts/iniciar"
+      - "tests/iniciar.sh"
+      - ".github/workflows/repo-testes-iniciar.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/iniciar"
+      - "tests/iniciar.sh"
+      - ".github/workflows/repo-testes-iniciar.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: gh iniciar (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versões
+        shell: bash
+        run: |
+          bash --version | head -1
+          git --version
+
+      - name: Rodar os testes
+        shell: bash
+        run: bash tests/iniciar.sh

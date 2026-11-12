@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# gh iniciar: começa o trabalho numa issue com a branch no padrão da organização.
+#
+#   gh iniciar N [--tipo TIPO] [--nome DESCRICAO] [--sem-checkout]
+#
+# Monta o nome tipo/prefixo-N-descricao (tipo vem da label "tipo: X" da issue,
+# prefixo de "git config monitora.prefixo", descricao do título), cria a branch
+# direto no GitHub e ligada à issue com "gh issue develop", faz o checkout local
+# e atribui você à issue se ela ainda não tiver responsável. Como a branch nasce
+# no GitHub, a issue vai para "Em andamento" no projeto Monitora na hora.
+#
+# Requisitos: bash, git e gh no mesmo ambiente, com o gh autenticado.
+# Fonte: https://github.com/UFJF-LRM/.github/blob/main/scripts/iniciar
+# Padrão: https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-pr.md#branch
+
+set -u
+
+TIPOS='feat fix docs refactor test style perf build ci chore'
+LIMITE_DESCRICAO=40
+CONVENCAO='https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md'
+
+erro() {
+  echo "✖ $*" >&2
+  exit 1
+}
+
+uso() {
+  cat <<'EOF'
+Uso: gh iniciar N [--tipo TIPO] [--nome DESCRICAO] [--sem-checkout]
+
+  N               número da issue
+  --tipo TIPO     tipo da branch, se a issue não tiver a label "tipo: X"
+  --nome TEXTO    descrição da branch, no lugar da gerada a partir do título
+  --sem-checkout  cria a branch no GitHub sem trocar de branch localmente
+EOF
+}
+
+# Minúsculas, sem acentos, só letras, números e hífen.
+# Uma substituição por caractere (e não [áà...]): funciona em qualquer locale,
+# inclusive quando o terminal não está em UTF-8.
+para_slug() {
+  local texto="$1" par
+  for par in á:a à:a â:a ã:a ä:a Á:a À:a Â:a Ã:a Ä:a é:e è:e ê:e ë:e É:e È:e Ê:e Ë:e \
+             í:i ì:i î:i ï:i Í:i Ì:i Î:i Ï:i ó:o ò:o ô:o õ:o ö:o Ó:o Ò:o Ô:o Õ:o Ö:o \
+             ú:u ù:u û:u ü:u Ú:u Ù:u Û:u Ü:u ç:c Ç:c ñ:n Ñ:n; do
+    texto="${texto//"${par%%:*}"/"${par##*:}"}"
+  done
+  printf '%s' "$texto" \
+    | LC_ALL=C tr '[:upper:]' '[:lower:]' \
+    | LC_ALL=C sed -e 's/[^a-z0-9]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//'
+}
+
+# Corta no limite sem partir palavras.
+encurtar() {
+  local texto="$1" resultado="" palavra
+  local IFS='-'
+  for palavra in $texto; do
+    if [ -z "$resultado" ]; then
+      resultado="$palavra"
+    elif [ $(( ${#resultado} + 1 + ${#palavra} )) -le "$LIMITE_DESCRICAO" ]; then
+      resultado="$resultado-$palavra"
+    else
+      break
+    fi
+  done
+  printf '%s' "${resultado:0:$LIMITE_DESCRICAO}"
+}
+
+numero="" tipo="" nome="" checkout=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h | --help) uso; exit 0 ;;
+    --tipo) [ $# -ge 2 ] || erro "--tipo precisa de um valor."; tipo="$2"; shift 2 ;;
+    --nome) [ $# -ge 2 ] || erro "--nome precisa de um valor."; nome="$2"; shift 2 ;;
+    --sem-checkout) checkout=0; shift ;;
+    -*) erro "Opção desconhecida: $1. Veja gh iniciar --help." ;;
+    *) [ -z "$numero" ] || erro "Informe só um número de issue."; numero="$1"; shift ;;
+  esac
+done
+
+[ -n "$numero" ] || { uso >&2; exit 1; }
+case "$numero" in
+  *[!0-9]* | '') erro "O número da issue deve ser só dígitos (recebido: '$numero')." ;;
+esac
+
+command -v git >/dev/null 2>&1 || erro "git não encontrado. O gh iniciar precisa do git no mesmo ambiente do gh."
+command -v gh >/dev/null 2>&1 || erro "gh não encontrado."
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || erro "Rode o gh iniciar dentro do clone do repositório."
+
+prefixo="$(git config --get monitora.prefixo 2>/dev/null || true)"
+if [ -z "$prefixo" ]; then
+  erro "O prefixo do repositório não está configurado. Rode, por exemplo: git config monitora.prefixo api"
+fi
+if [ "$prefixo" = "nenhum" ]; then
+  erro "Este repositório não usa número de issue nas branches (monitora.prefixo = nenhum)."
+fi
+case "$prefixo" in
+  *[!a-z]*) erro "O prefixo configurado ('$prefixo') é inválido: use só letras minúsculas." ;;
+esac
+
+# Dados da issue (o --jq é o do próprio gh: não precisa de jq instalado).
+estado="$(gh issue view "$numero" --json state --jq '.state' 2>/dev/null)" || erro "Não encontrei a issue #$numero neste repositório."
+[ "$estado" = "OPEN" ] || erro "A issue #$numero está fechada."
+titulo="$(gh issue view "$numero" --json title --jq '.title')"
+url="$(gh issue view "$numero" --json url --jq '.url')"
+
+if [ -z "$tipo" ]; then
+  tipo="$(gh issue view "$numero" --json labels --jq '[.labels[].name | select(startswith("tipo: "))][0] // "" | sub("^tipo: "; "")')"
+fi
+[ -n "$tipo" ] || erro "A issue #$numero não tem label de tipo. Adicione uma (por exemplo 'tipo: feat') ou use --tipo feat."
+case " $TIPOS " in
+  *" $tipo "*) ;;
+  *) erro "Tipo inválido: '$tipo'. Use um destes: $TIPOS." ;;
+esac
+
+# Se a issue já tem branch ligada, usa a existente.
+existente="$(gh issue develop "$numero" --list 2>/dev/null | awk 'NF {print $1; exit}')"
+if [ -n "$existente" ]; then
+  echo "A issue #$numero já tem a branch $existente."
+  if [ "$checkout" -eq 1 ]; then
+    git fetch -q origin "$existente" 2>/dev/null || true
+    if git show-ref --verify --quiet "refs/heads/$existente"; then
+      git switch -q "$existente" || erro "Não consegui trocar para $existente."
+    else
+      git switch -q -c "$existente" --track "origin/$existente" || erro "Não consegui trocar para $existente."
+    fi
+    echo "Você está na branch $existente."
+  fi
+  exit 0
+fi
+
+descricao="$(encurtar "$(para_slug "${nome:-$titulo}")")"
+[ -n "$descricao" ] || erro "Não consegui montar a descrição da branch. Use --nome descricao."
+branch="$tipo/$prefixo-$numero-$descricao"
+
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "Aviso: há mudanças não commitadas. Elas vão junto para a branch nova." >&2
+fi
+
+git fetch -q origin main 2>/dev/null || true
+
+argumentos=(issue develop "$numero" --name "$branch" --base main)
+[ "$checkout" -eq 1 ] && argumentos+=(--checkout)
+gh "${argumentos[@]}" >/dev/null || erro "O gh issue develop falhou ao criar $branch."
+
+# Atribui você à issue, se ela ainda não tiver responsável.
+responsaveis="$(gh issue view "$numero" --json assignees --jq '.assignees | length')"
+if [ "$responsaveis" = "0" ]; then
+  login="$(gh api user --jq '.login' 2>/dev/null || true)"
+  if [ -n "$login" ] && gh api -X POST "repos/{owner}/{repo}/issues/$numero/assignees" -f "assignees[]=$login" >/dev/null 2>&1; then
+    echo "Você (@$login) foi atribuído à issue #$numero."
+  else
+    echo "Aviso: não consegui atribuir você à issue #$numero. Faça isso na página da issue." >&2
+  fi
+fi
+
+echo ""
+echo "✔ Branch $branch criada no GitHub e ligada à issue #$numero."
+[ "$checkout" -eq 1 ] && echo "  Você já está nela."
+echo "  Issue: $url"
+echo "  Commits: $tipo($prefixo-$numero): descrição ($CONVENCAO)"

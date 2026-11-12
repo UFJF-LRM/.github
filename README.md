@@ -30,8 +30,11 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/workflows/repo-verificar-app.yml`](.github/workflows/repo-verificar-app.yml) | Verifica se o GitHub App da organização gera token e lê o projeto Monitora |
 | [`.github/workflows/repo-em-andamento.yml`](.github/workflows/repo-em-andamento.yml) | Aplica a mudança para Em andamento às issues deste repositório |
 | [`.github/workflows/repo-testes-hook.yml`](.github/workflows/repo-testes-hook.yml) | Roda os testes do hook no Linux, no macOS e no Windows |
+| [`.github/workflows/repo-testes-iniciar.yml`](.github/workflows/repo-testes-iniciar.yml) | Roda os testes do `gh iniciar` no Linux, no macOS e no Windows |
 | [`hooks/commit-msg`](hooks/commit-msg) | Hook local do git que recusa commits fora da convenção, na máquina de quem commita. Cada repositório copia e ativa |
 | [`tests/commit-msg.sh`](tests/commit-msg.sh) | Testes do hook, em bash puro |
+| [`scripts/iniciar`](scripts/iniciar) | Comando `gh iniciar N`: cria a branch da issue no padrão, direto no GitHub e ligada à issue |
+| [`tests/iniciar.sh`](tests/iniciar.sh) | Testes do `gh iniciar`, em bash puro |
 
 Os workflows seguem um prefixo por papel, porque o GitHub Actions não aceita subpastas em `.github/workflows/`:
 
@@ -308,6 +311,47 @@ jobs:
 | `app_client_id` | (obrigatório) | Client ID do App, vindo da variable `MONITORA_BOT_CLIENT_ID` |
 | `projeto` | `1` | Número do projeto da organização |
 | secret `app_private_key` | (obrigatório) | Chave do App, vinda do secret `MONITORA_BOT_PRIVATE_KEY` |
+
+## Comando gh iniciar
+
+O [`scripts/iniciar`](scripts/iniciar) é a forma recomendada de começar uma tarefa. Dentro do clone do repositório:
+
+```bash
+gh iniciar 8
+```
+
+Esse comando:
+
+1. lê a issue #8 e monta o nome da branch no padrão, por exemplo `feat/api-8-criar-os-endpoints-de-sessao-e-token`:
+   - o **tipo** vem da label `tipo: X` da issue;
+   - o **prefixo** vem de `git config monitora.prefixo`, o mesmo do hook de commit;
+   - a **descrição** vem do título, sem acentos e com no máximo 40 caracteres, cortados entre palavras;
+2. cria a branch **direto no GitHub, ligada à issue** (aparece em *Development*), com `gh issue develop`, e faz o checkout local;
+3. atribui você à issue, se ela ainda não tiver responsável.
+
+Como a branch nasce no GitHub, a issue vai para **Em andamento** na hora, se o repositório tiver o [Em andamento automático](#em-andamento-automático).
+
+| Opção | Uso |
+|---|---|
+| `--tipo TIPO` | Tipo da branch, quando a issue não tem a label `tipo: X` |
+| `--nome TEXTO` | Descrição da branch, no lugar da gerada a partir do título |
+| `--sem-checkout` | Cria a branch no GitHub sem trocar de branch localmente |
+
+Se a issue já tiver uma branch ligada, o comando troca para ela em vez de criar outra. Ele recusa issues fechadas, issues sem label de tipo (sem `--tipo`) e clones sem `monitora.prefixo`, explicando o que fazer.
+
+### Instalação
+
+Requisitos: `bash`, `git` e `gh` **no mesmo ambiente**, com o `gh` autenticado. No Windows, use o Git Bash. O `gh issue develop` precisa do `git` no mesmo ambiente do `gh`.
+
+```bash
+mkdir -p ~/.monitora
+curl -fsSL https://raw.githubusercontent.com/UFJF-LRM/.github/main/scripts/iniciar -o ~/.monitora/iniciar
+gh alias set --shell iniciar 'bash ~/.monitora/iniciar "$@"'
+```
+
+Para atualizar, rode o `curl` de novo. Para testar o script: `bash tests/iniciar.sh`.
+
+A alternativa seria publicar o comando como extensão do `gh` (`gh extension install UFJF-LRM/gh-iniciar`), que é mais fácil de atualizar, mas exige um repositório próprio. Por enquanto, o alias é suficiente.
 
 ## Como contribuir com este repositório
 
