@@ -38,12 +38,16 @@ EOF
 # Minúsculas, sem acentos, só letras, números e hífen.
 # Uma substituição por caractere (e não [áà...]): funciona em qualquer locale,
 # inclusive quando o terminal não está em UTF-8.
+# As variáveis ficam sem aspas dentro de ${texto//de/para}: o bash 3.2 (macOS)
+# não remove aspas da parte que substitui e as colocaria no texto.
 para_slug() {
-  local texto="$1" par
+  local texto="$1" par de para
   for par in á:a à:a â:a ã:a ä:a Á:a À:a Â:a Ã:a Ä:a é:e è:e ê:e ë:e É:e È:e Ê:e Ë:e \
              í:i ì:i î:i ï:i Í:i Ì:i Î:i Ï:i ó:o ò:o ô:o õ:o ö:o Ó:o Ò:o Ô:o Õ:o Ö:o \
              ú:u ù:u û:u ü:u Ú:u Ù:u Û:u Ü:u ç:c Ç:c ñ:n Ñ:n; do
-    texto="${texto//"${par%%:*}"/"${par##*:}"}"
+    de="${par%%:*}"
+    para="${par##*:}"
+    texto="${texto//$de/$para}"
   done
   printf '%s' "$texto" \
     | LC_ALL=C tr '[:upper:]' '[:lower:]' \
