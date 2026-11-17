@@ -90,7 +90,17 @@ registrou "  usa gh issue develop com o nome, a base main e o checkout" "issue d
   || { falhou=$((falhou + 1)); echo "FALHA   não fez o checkout local"; }
 
 padrao; FAKE_TITLE="Atualizar dependências com vulnerabilidades conhecidas (CVE-2026-114509 e outras)"
-caso "corta em 40 caracteres sem partir palavras" ok "feat/api-2-atualizar-dependencias-com criada" -- 2
+caso "corta em 40 caracteres sem partir palavras nem terminar em \"com\"" ok "feat/api-2-atualizar-dependencias criada" -- 2
+padrao; FAKE_TITLE="Atualizar as dependências do npm com vulnerabilidades no build do sistema"
+caso "caso real da monitora-webui#10: tira o \"com\" do fim" ok "feat/api-41-atualizar-as-dependencias-do-npm criada" -- 41
+padrao; FAKE_TITLE="Ajustar o mapa de risco para a visualização"
+caso "tira duas palavras de ligação seguidas (\"para a\")" ok "feat/api-42-ajustar-o-mapa-de-risco criada" -- 42
+padrao; FAKE_TITLE="De a"
+caso "mantém a descrição feita só de palavras de ligação" ok "feat/api-43-de-a criada" -- 43
+padrao; FAKE_TITLE="Revisar os textos do"
+caso "título curto, sem corte, terminado em palavra de ligação" ok "feat/api-44-revisar-os-textos criada" -- 44
+padrao
+caso "--nome também não termina em palavra de ligação" ok "feat/api-45-login-e-sessao criada" -- 45 --nome "Login e sessão com"
 padrao; FAKE_TITLE="ÇÃO É ÚNICO: Ñandu & Ação!!"
 caso "maiúsculas acentuadas, ç, ñ e símbolos" ok "feat/api-3-cao-e-unico-nandu-acao" -- 3
 padrao; FAKE_TIPO_LABEL="tipo: fix"

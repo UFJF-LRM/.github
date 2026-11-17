@@ -328,7 +328,7 @@ Esse comando:
 1. lê a issue #8 e monta o nome da branch no padrão, por exemplo `feat/api-8-criar-os-endpoints-de-sessao-e-token`:
    - o **tipo** vem da label `tipo: X` da issue;
    - o **prefixo** vem de `git config monitora.prefixo`, o mesmo do hook de commit;
-   - a **descrição** vem do título, sem acentos e com no máximo 40 caracteres, cortados entre palavras;
+   - a **descrição** vem do título, sem acentos e com no máximo 40 caracteres, cortados entre palavras. Ela não termina em palavra de ligação (artigos, preposições, "e" e "ou"): "...do npm com vulnerabilidades" vira `...-do-npm`, e não `...-do-npm-com`. O mesmo vale para o `--nome`;
 2. cria a branch **direto no GitHub, ligada à issue** (aparece em *Development*), com `gh issue develop`, e faz o checkout local;
 3. atribui você à issue, se ela ainda não tiver responsável.
 
