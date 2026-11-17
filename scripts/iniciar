@@ -4,7 +4,8 @@
 #   gh iniciar N [--tipo TIPO] [--nome DESCRICAO] [--sem-checkout]
 #
 # Monta o nome tipo/prefixo-N-descricao (tipo vem da label "tipo: X" da issue,
-# prefixo de "git config monitora.prefixo", descricao do título), cria a branch
+# prefixo de "git config monitora.prefixo", descricao do título, sem terminar
+# em palavra de ligação), cria a branch
 # direto no GitHub e ligada à issue com "gh issue develop", faz o checkout local
 # e atribui você à issue se ela ainda não tiver responsável. Como a branch nasce
 # no GitHub, a issue vai para "Em andamento" no projeto Monitora na hora.
@@ -17,6 +18,8 @@ set -u
 
 TIPOS='feat fix docs refactor test style perf build ci chore'
 LIMITE_DESCRICAO=40
+# Palavras de ligação que não podem terminar a descrição da branch, já sem acentos.
+LIGACAO='a o as os um uma de da do das dos em na no nas nos ao aos com para por pelo pela sem sob e ou'
 CONVENCAO='https://github.com/UFJF-LRM/monitora-docs/blob/main/workflow/padrao-de-commit.md'
 
 erro() {
@@ -68,6 +71,26 @@ encurtar() {
     fi
   done
   printf '%s' "${resultado:0:$LIMITE_DESCRICAO}"
+}
+
+# Tira do fim as palavras de ligação ("...-do-npm-com" vira "...-do-npm"),
+# uma de cada vez. Se só sobrarem palavras de ligação, devolve o texto como
+# veio, para a descrição nunca ficar vazia. Recebe o texto já sem acentos.
+tirar_ligacao_do_fim() {
+  local texto="$1" ultima
+  while :; do
+    ultima="${texto##*-}"
+    case " $LIGACAO " in
+      *" $ultima "*) ;;
+      *) break ;;
+    esac
+    if [ "$texto" = "$ultima" ]; then
+      printf '%s' "$1"
+      return
+    fi
+    texto="${texto%-*}"
+  done
+  printf '%s' "$texto"
 }
 
 numero="" tipo="" nome="" checkout=1
@@ -133,7 +156,7 @@ if [ -n "$existente" ]; then
   exit 0
 fi
 
-descricao="$(encurtar "$(para_slug "${nome:-$titulo}")")"
+descricao="$(tirar_ligacao_do_fim "$(encurtar "$(para_slug "${nome:-$titulo}")")")"
 [ -n "$descricao" ] || erro "Não consegui montar a descrição da branch. Use --nome descricao."
 branch="$tipo/$prefixo-$numero-$descricao"
 
