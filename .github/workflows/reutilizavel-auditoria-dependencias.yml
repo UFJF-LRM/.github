@@ -19,6 +19,9 @@
 #       with:
 #         ecossistema: composer   # ou npm
 #
+# O chamador define as permissões: contents: read sempre, e issues: write só
+# com abrir_issue: true.
+#
 # E toda semana, abrindo issue (.github/workflows/auditoria-semanal.yml):
 #
 #   on:
@@ -56,15 +59,14 @@ on:
         required: false
         default: '.'
 
-permissions: {}
+# Sem "permissions" aqui: o job herda as permissões do chamador. Um workflow
+# chamado não pode pedir mais do que o chamador concede, e pedir issues: write
+# faria o chamador do PR (só contents: read) falhar antes de começar.
 
 jobs:
   auditar:
     name: Dependências
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
     steps:
       - uses: actions/checkout@v5
 
@@ -233,6 +235,9 @@ jobs:
               digital = hashlib.sha256((ecossistema + ":" + ",".join(sorted(id_principal(a) for a in bloqueantes))).encode()).hexdigest()[:16]
               marcador = f"<!-- auditoria-dependencias: {digital} -->"
               abertas = gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body")
+              if abertas.returncode != 0:
+                  print(f"::error::Não consegui ler as issues do repositório para abrir o alerta. Com abrir_issue: true, o chamador precisa conceder 'issues: write'. Detalhe: {abertas.stderr.strip()}")
+                  sys.exit(1)
               existente = next((i["number"] for i in json.loads(abertas.stdout or "[]") if marcador in (i.get("body") or "")), None)
               if existente:
                   print(f"::notice::Os mesmos alertas já estão na issue #{existente}, que continua aberta. Nenhuma issue nova.")
@@ -265,7 +270,7 @@ jobs:
                       args += ["--label", l]
               criada = gh(*args)
               if criada.returncode != 0:
-                  print(f"::error::Falha ao abrir a issue de alerta: {criada.stderr.strip()}")
+                  print(f"::error::Falha ao abrir a issue de alerta (o chamador concede 'issues: write'?): {criada.stderr.strip()}")
               else:
                   print(f"::error::Issue de alerta aberta: {criada.stdout.strip()}")
 
