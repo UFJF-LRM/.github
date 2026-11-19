@@ -247,7 +247,7 @@ jobs:
 | `abrir_issue` | `false` | Abre uma issue de alerta quando houver alerta bloqueante. Use `true` no agendamento semanal |
 | `diretorio` | `.` | Diretório do lock e do arquivo de exceções |
 
-O arquivo que chama o workflow precisa conceder `contents: read` e, com `abrir_issue: true`, `issues: write`.
+**Quem define as permissões é o chamador**, e o workflow reutilizável herda as dele: `contents: read` sempre, e `issues: write` só com `abrir_issue: true`. O workflow não declara permissões próprias, porque um workflow chamado não pode pedir mais do que o chamador concede: se ele pedisse `issues: write`, o chamador do PR, que só concede `contents: read`, falharia antes de começar (`startup_failure`).
 
 ### Issue de alerta
 
