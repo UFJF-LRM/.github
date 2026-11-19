@@ -1,0 +1,272 @@
+# Workflow reutilizável: audita as dependências (Composer ou npm) e falha com
+# alerta de segurança grave. Com abrir_issue: true, também abre uma issue de
+# alerta no repositório, sem repetir a mesma issue.
+#
+# Regra:
+#   - Composer: deixam passar só os alertas "medium" e "low". Crítico, alto,
+#     sem gravidade (ninguém classificou, o que não quer dizer leve) e
+#     qualquer outro valor bloqueiam.
+#   - npm: deixam passar só "info", "low" e "moderate". "high", "critical" e
+#     qualquer outro valor bloqueiam.
+#   - Um alerta listado em .auditoria-ignorar.json (no diretório do lock), com
+#     motivo e data de revisão, não bloqueia. Exceção vencida vira aviso.
+#
+# Uso em cada repositório, no PR (.github/workflows/testes.yml, por exemplo):
+#
+#   jobs:
+#     dependencias:
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-dependencias.yml@main
+#       with:
+#         ecossistema: composer   # ou npm
+#
+# E toda semana, abrindo issue (.github/workflows/auditoria-semanal.yml):
+#
+#   on:
+#     schedule:
+#       - cron: '0 12 * * 1'   # segunda, 9h de Brasília
+#     workflow_dispatch:
+#   permissions:
+#     contents: read
+#     issues: write
+#   jobs:
+#     dependencias:
+#       uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-dependencias.yml@main
+#       with:
+#         ecossistema: composer
+#         abrir_issue: true
+#
+# Documentação: https://github.com/UFJF-LRM/.github#auditoria-das-dependências
+name: Reutilizável · Auditoria das dependências
+
+on:
+  workflow_call:
+    inputs:
+      ecossistema:
+        description: 'Gerenciador de pacotes: "composer" (composer.lock) ou "npm" (package-lock.json).'
+        type: string
+        required: true
+      abrir_issue:
+        description: 'Abre uma issue de alerta quando houver alerta bloqueante (use no agendamento semanal).'
+        type: boolean
+        required: false
+        default: false
+      diretorio:
+        description: 'Diretório do lock e do .auditoria-ignorar.json, relativo à raiz do repositório.'
+        type: string
+        required: false
+        default: '.'
+
+permissions: {}
+
+jobs:
+  auditar:
+    name: Dependências
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configurar o PHP
+        if: inputs.ecossistema == 'composer'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Auditar
+        shell: python
+        env:
+          # Entradas passam por variáveis de ambiente, nunca interpoladas no script.
+          ECOSSISTEMA: ${{ inputs.ecossistema }}
+          ABRIR_ISSUE: ${{ inputs.abrir_issue }}
+          DIRETORIO: ${{ inputs.diretorio }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          URL_EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          import datetime, hashlib, json, os, re, subprocess, sys
+
+          env = os.environ.get
+          ecossistema = env("ECOSSISTEMA", "")
+          abrir_issue = env("ABRIR_ISSUE") == "true"
+          resumo = open(env("GITHUB_STEP_SUMMARY", os.devnull), "a")
+          ARQUIVO_EXCECOES = ".auditoria-ignorar.json"
+          ORDEM = {"critical": 0, "high": 1, "": 2, "medium": 3, "moderate": 3, "low": 4, "info": 5}
+
+          def falhar(mensagem):
+              print(f"::error::{mensagem}")
+              sys.exit(2)
+
+          def ghsa(link):
+              achado = re.search(r"GHSA(-[23456789cfghjmpqrvwx]{4}){3}", link or "")
+              return [achado.group(0)] if achado else []
+
+          diretorio = env("DIRETORIO") or "."
+          if not os.path.isdir(diretorio):
+              falhar(f"O diretório '{diretorio}' não existe.")
+          os.chdir(diretorio)
+
+          # ── Coleta dos alertas, no mesmo formato para os dois ecossistemas ──
+          alertas = []
+          if ecossistema == "composer":
+              if not os.path.isfile("composer.lock"):
+                  falhar(f"composer.lock não encontrado em '{diretorio}'.")
+              saida = subprocess.run(["composer", "audit", "--locked", "--format=json"],
+                                     capture_output=True, text=True).stdout
+              try:
+                  bruto = json.loads(saida)["advisories"]
+              except (ValueError, KeyError):
+                  falhar("O composer audit não devolveu um resultado válido.")
+              lock = json.load(open("composer.lock"))
+              versoes = {p["name"]: p["version"] for p in lock.get("packages", []) + lock.get("packages-dev", [])}
+              grupos = bruto.values() if isinstance(bruto, dict) else bruto
+              for a in (x for grupo in grupos for x in grupo):
+                  ids = [i for i in (a.get("cve"), a.get("advisoryId")) if i] + ghsa(a.get("link"))
+                  alertas.append({"pacote": a["packageName"], "versao": versoes.get(a["packageName"], "?"),
+                                  "gravidade": (a.get("severity") or "").lower(), "ids": ids,
+                                  "titulo": a.get("title", ""), "link": a.get("link") or ""})
+              leves = {"medium", "low"}
+          elif ecossistema == "npm":
+              if not os.path.isfile("package-lock.json"):
+                  falhar(f"package-lock.json não encontrado em '{diretorio}'.")
+              saida = subprocess.run(["npm", "audit", "--json", "--package-lock-only"],
+                                     capture_output=True, text=True).stdout
+              try:
+                  bruto = json.loads(saida)["vulnerabilities"]
+              except (ValueError, KeyError):
+                  falhar("O npm audit não devolveu um resultado válido.")
+              pacotes = json.load(open("package-lock.json")).get("packages", {})
+              vistos = set()
+              for vulneravel in bruto.values():
+                  # "via" mistura os alertas do próprio pacote (dicionários) com os
+                  # nomes de dependências vulneráveis (textos); só os primeiros contam.
+                  for a in vulneravel.get("via", []):
+                      if not isinstance(a, dict) or a.get("source") in vistos:
+                          continue
+                      vistos.add(a.get("source"))
+                      nome = a.get("name", "?")
+                      versoes = sorted({v.get("version", "?") for k, v in pacotes.items()
+                                        if k == f"node_modules/{nome}" or k.endswith(f"/node_modules/{nome}")})
+                      alertas.append({"pacote": nome, "versao": ", ".join(versoes) or "?",
+                                      "gravidade": (a.get("severity") or "").lower(), "ids": ghsa(a.get("url")),
+                                      "titulo": a.get("title", ""), "link": a.get("url") or ""})
+              leves = {"info", "low", "moderate"}
+          else:
+              falhar(f"Entrada 'ecossistema' inválida: '{ecossistema}'. Use 'composer' ou 'npm'.")
+
+          # ── Exceções ──
+          excecoes = []
+          if os.path.isfile(ARQUIVO_EXCECOES):
+              try:
+                  excecoes = json.load(open(ARQUIVO_EXCECOES))["ignorar"]
+                  assert isinstance(excecoes, list)
+              except (ValueError, KeyError, AssertionError):
+                  falhar(f"{ARQUIVO_EXCECOES} inválido: o formato é {{\"ignorar\": [{{\"id\", \"motivo\", \"revisar_em\"}}]}}.")
+          hoje = datetime.date.today()
+          for e in excecoes:
+              if not isinstance(e, dict) or not str(e.get("id", "")).strip() or not str(e.get("motivo", "")).strip():
+                  falhar(f"Exceção sem 'id' ou sem 'motivo' em {ARQUIVO_EXCECOES}: {e}")
+              try:
+                  e["_revisar"] = datetime.date.fromisoformat(str(e.get("revisar_em", "")))
+              except ValueError:
+                  falhar(f"Exceção {e['id']} sem 'revisar_em' válido (AAAA-MM-DD) em {ARQUIVO_EXCECOES}.")
+              e["_usada"] = False
+
+          for a in alertas:
+              ids = {i.upper() for i in a["ids"]}
+              a["excecao"] = next((e for e in excecoes if e["id"].strip().upper() in ids), None)
+              if a["excecao"]:
+                  a["excecao"]["_usada"] = True
+              a["bloqueia"] = a["gravidade"] not in leves and not a["excecao"]
+
+          alertas.sort(key=lambda a: (ORDEM.get(a["gravidade"], 2), a["pacote"]))
+          bloqueantes = [a for a in alertas if a["bloqueia"]]
+          ignorados = [a for a in alertas if a["excecao"]]
+          avisos = [a for a in alertas if not a["bloqueia"] and not a["excecao"]]
+
+          # ── Log ──
+          def rotulo(a):
+              return a["gravidade"] or "sem gravidade"
+          def id_principal(a):
+              return a["ids"][0] if a["ids"] else "?"
+          for a in alertas:
+              estado = "IGNORADO" if a["excecao"] else ("BLOQUEIA" if a["bloqueia"] else "aviso")
+              print(f"{estado:9} {rotulo(a):14} {a['pacote']} {a['versao']}  {id_principal(a)}  {a['titulo']}")
+
+          for e in excecoes:
+              if e["_usada"]:
+                  print(f"Exceção em vigor: {e['id']} (revisar em {e['_revisar']:%d/%m/%Y}): {e['motivo']}")
+              if e["_revisar"] < hoje:
+                  print(f"::warning::A exceção {e['id']} passou da data de revisão ({e['_revisar']:%d/%m/%Y}). Confira se já há correção e atualize ou remova a exceção.")
+              if not e["_usada"]:
+                  print(f"::notice::A exceção {e['id']} não corresponde a nenhum alerta atual e pode ser removida de {ARQUIVO_EXCECOES}.")
+
+          # ── Resumo da execução ──
+          def linha(a):
+              alerta = f"[{id_principal(a)}]({a['link']})" if a["link"] else id_principal(a)
+              titulo = a["titulo"].replace("|", "/")
+              return f"| {rotulo(a)} | `{a['pacote']}` | {a['versao']} | {alerta} | {titulo} |"
+          cabecalho = "| Gravidade | Pacote | Versão | Alerta | Título |\n|---|---|---|---|---|"
+          tabela = "\n".join([cabecalho] + [linha(a) for a in bloqueantes])
+          resumo.write(f"## Auditoria das dependências ({ecossistema})\n\n")
+          resumo.write(f"{len(bloqueantes)} bloqueante(s), {len(avisos)} aviso(s), {len(ignorados)} ignorado(s) por exceção.\n\n")
+          if bloqueantes:
+              resumo.write(tabela + "\n\n")
+          resumo.close()
+
+          if avisos:
+              print(f"::warning::{len(avisos)} alerta(s) de gravidade baixa ou média. Não bloqueiam, mas vale atualizar.")
+          if not bloqueantes:
+              print("Nenhum alerta bloqueante.")
+              sys.exit(0)
+
+          sem_gravidade = sum(1 for a in bloqueantes if not a["gravidade"])
+          print(f"::error::{len(bloqueantes)} alerta(s) bloqueante(s) nas dependências ({sem_gravidade} sem gravidade). Atualize os pacotes listados acima.")
+
+          # ── Issue de alerta ──
+          if abrir_issue:
+              def gh(*args):
+                  return subprocess.run(["gh", *args], capture_output=True, text=True)
+
+              digital = hashlib.sha256((ecossistema + ":" + ",".join(sorted(id_principal(a) for a in bloqueantes))).encode()).hexdigest()[:16]
+              marcador = f"<!-- auditoria-dependencias: {digital} -->"
+              abertas = gh("issue", "list", "--state", "open", "--limit", "200", "--json", "number,body")
+              existente = next((i["number"] for i in json.loads(abertas.stdout or "[]") if marcador in (i.get("body") or "")), None)
+              if existente:
+                  print(f"::notice::Os mesmos alertas já estão na issue #{existente}, que continua aberta. Nenhuma issue nova.")
+                  sys.exit(1)
+
+              corpo = "\n".join([
+                  f"A auditoria das dependências ({ecossistema}) encontrou alertas de segurança **bloqueantes**.",
+                  "",
+                  tabela,
+                  "",
+                  f"- **Execução:** {env('URL_EXECUCAO')}",
+                  "- **Regra:** veja a [auditoria das dependências](https://github.com/UFJF-LRM/.github#auditoria-das-dependências) no README do `.github`.",
+                  "",
+                  "## O que fazer",
+                  "",
+                  "- Atualizar os pacotes listados num PR. A auditoria do PR confere a correção.",
+                  f"- Se um alerta não tiver correção publicada, ou não afetar o projeto, registrar a exceção em `{ARQUIVO_EXCECOES}`, com o motivo e a data de revisão, também num PR.",
+                  "- Fechar esta issue quando o PR for mesclado.",
+                  "",
+                  marcador,
+              ])
+              existentes = {l["name"] for l in json.loads(gh("label", "list", "--limit", "200", "--json", "name").stdout or "[]")}
+              desejadas = ["tipo: build", "prioridade: alta", "segurança"]
+              faltando = [l for l in desejadas if l not in existentes]
+              if faltando:
+                  print(f"::warning::Labels que não existem neste repositório e ficaram de fora da issue: {', '.join(faltando)}.")
+              args = ["issue", "create", "--title", f"Auditoria: alertas de segurança nas dependências ({hoje:%d/%m/%Y})", "--body", corpo]
+              for l in desejadas:
+                  if l in existentes:
+                      args += ["--label", l]
+              criada = gh(*args)
+              if criada.returncode != 0:
+                  print(f"::error::Falha ao abrir a issue de alerta: {criada.stderr.strip()}")
+              else:
+                  print(f"::error::Issue de alerta aberta: {criada.stdout.strip()}")
+
+          sys.exit(1)
