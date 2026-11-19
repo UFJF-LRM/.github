@@ -22,6 +22,7 @@ O GitHub trata de forma especial um repositório público chamado **exatamente**
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | Template padrão de pull request: issue (`Closes #`), O que muda, Como testar, Checklist e Capturas de tela |
 | [`.github/workflows/reutilizavel-convencao-pr.yml`](.github/workflows/reutilizavel-convencao-pr.yml) | **Reutilizável:** valida o título e a issue de um PR. Os outros repositórios chamam este arquivo |
 | [`.github/workflows/reutilizavel-auditoria-commits.yml`](.github/workflows/reutilizavel-auditoria-commits.yml) | **Reutilizável:** audita os commits que entram na `main` e abre uma issue de alerta quando há desvio |
+| [`.github/workflows/reutilizavel-auditoria-dependencias.yml`](.github/workflows/reutilizavel-auditoria-dependencias.yml) | **Reutilizável:** audita as dependências (Composer ou npm), falha com alerta grave e, no agendamento semanal, abre uma issue de alerta |
 | [`.github/workflows/reutilizavel-atribuicao.yml`](.github/workflows/reutilizavel-atribuicao.yml) | **Reutilizável:** atribui o autor do PR ao próprio PR e às issues que ele resolve |
 | [`.github/workflows/reutilizavel-em-andamento.yml`](.github/workflows/reutilizavel-em-andamento.yml) | **Reutilizável:** move a issue para Em andamento no projeto Monitora quando a branch dela chega ao GitHub |
 | [`.github/workflows/repo-convencao-pr.yml`](.github/workflows/repo-convencao-pr.yml) | Aplica a convenção do PR aos PRs deste repositório, com `prefixo: github` |
@@ -192,6 +193,90 @@ jobs:
 | `exigir_pr` | `true` | Trata como desvio o commit que não veio de um PR. Use `false` no `monitora-docs`, que aceita push direto |
 
 As permissões `contents: read` e `issues: write` precisam estar no arquivo que chama o workflow.
+
+## Auditoria das dependências
+
+O workflow reutilizável [`reutilizavel-auditoria-dependencias.yml`](.github/workflows/reutilizavel-auditoria-dependencias.yml) roda o `composer audit` ou o `npm audit` sobre o lock do repositório, sem instalar nada, e **falha quando há alerta de segurança grave**. Cada repositório o chama em dois lugares:
+
+- **no PR e no push na `main`**, para o check ficar vermelho antes do merge;
+- **toda semana**, porque os alertas surgem sem mudança no código. Nesse caso, ele também abre uma issue de alerta.
+
+### Regra
+
+| Ecossistema | Deixam passar (aviso) | Bloqueiam |
+|---|---|---|
+| Composer | `medium` e `low` | `critical`, `high`, **sem gravidade** e qualquer outro valor |
+| npm | `info`, `low` e `moderate` | `high`, `critical` e qualquer outro valor |
+
+Um alerta **sem gravidade** é um alerta que ninguém classificou, e não um alerta leve. Por isso ele bloqueia. O Packagist tem vários assim, alguns sérios, como burlas de regras de acesso do Symfony.
+
+### Como usar num repositório
+
+No workflow dos PRs (o `testes.yml`, por exemplo):
+
+```yaml
+jobs:
+  dependencias:
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-dependencias.yml@main
+    with:
+      ecossistema: composer   # ou npm
+```
+
+E um `.github/workflows/auditoria-semanal.yml`:
+
+```yaml
+name: Auditoria semanal das dependências
+on:
+  schedule:
+    - cron: '0 12 * * 1'   # segunda, 9h de Brasília
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  dependencias:
+    uses: UFJF-LRM/.github/.github/workflows/reutilizavel-auditoria-dependencias.yml@main
+    with:
+      ecossistema: composer
+      abrir_issue: true
+```
+
+| Entrada | Padrão | Uso |
+|---|---|---|
+| `ecossistema` | (obrigatória) | `composer` (lê o `composer.lock`) ou `npm` (lê o `package-lock.json`) |
+| `abrir_issue` | `false` | Abre uma issue de alerta quando houver alerta bloqueante. Use `true` no agendamento semanal |
+| `diretorio` | `.` | Diretório do lock e do arquivo de exceções |
+
+O arquivo que chama o workflow precisa conceder `contents: read` e, com `abrir_issue: true`, `issues: write`.
+
+### Issue de alerta
+
+Com `abrir_issue: true`, um alerta bloqueante abre uma issue no próprio repositório, com as labels `tipo: build`, `prioridade: alta` e `segurança`, a tabela dos alertas (gravidade, pacote, versão, link e título) e o link da execução. As labels que não existirem no repositório ficam de fora, com um aviso.
+
+A issue não se repete: o corpo leva um marcador com a impressão digital do conjunto de alertas. Enquanto houver uma issue aberta com o mesmo marcador, a auditoria só registra no log. Um alerta novo muda o conjunto e abre uma issue nova.
+
+### Exceções
+
+Às vezes um alerta não tem correção publicada, ou não afeta o projeto. Em vez de afrouxar a regra, registre a exceção em `.auditoria-ignorar.json`, no diretório do lock, **num PR**:
+
+```json
+{
+  "ignorar": [
+    {
+      "id": "GHSA-xxxx-xxxx-xxxx",
+      "motivo": "Sem correção publicada; só afeta o build, que não recebe entrada de usuários.",
+      "revisar_em": "2027-01-15"
+    }
+  ]
+}
+```
+
+- **`id`:** o identificador do alerta, como o CVE, o GHSA ou o ID do Packagist (`PKSA-...`), exatamente como aparece no log do job.
+- **`motivo` e `revisar_em` são obrigatórios.** Sem eles, o job falha.
+- **Cada exceção libera só aquele alerta.** Os outros alertas do mesmo pacote continuam bloqueando.
+- O log lista as exceções em vigor. Uma exceção **vencida** vira aviso, e uma que não corresponde a nenhum alerta é indicada para remoção.
+
+O mesmo formato vale para o Composer e para o npm, que não tem um mecanismo próprio de exceção.
 
 ## Atribuição automática
 
